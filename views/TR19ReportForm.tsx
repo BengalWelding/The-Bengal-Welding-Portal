@@ -56,13 +56,65 @@ const AREAS_CLEANED = [
   'Discharge ductwork (downstream of fan)',
 ];
 
+const JOBS_STORAGE_KEY = 'bengal_jobs';
+
+/** Resolve job from context, then localStorage, then a minimal job from report log so Edit Report always has something to show. */
+function resolveJob(jobId: string | undefined, jobsFromContext: Job[]): Job | null {
+  if (!jobId) return null;
+  const fromContext = jobsFromContext.find((j) => j.id === jobId);
+  if (fromContext) return fromContext;
+  try {
+    const localJobs = JSON.parse(localStorage.getItem(JOBS_STORAGE_KEY) || '[]') as Job[];
+    const fromStorage = localJobs.find((j: Job) => j.id === jobId);
+    if (fromStorage) return fromStorage;
+  } catch {
+    // ignore
+  }
+  try {
+    const log = JSON.parse(localStorage.getItem(TR19_REPORT_LOG_KEY) || '[]') as Array<{ jobId: string; jobTitle?: string; customerName?: string }>;
+    const entry = log.find((e) => e.jobId === jobId);
+    if (entry) {
+      return {
+        id: jobId,
+        title: entry.jobTitle || 'TR19 Report',
+        description: '',
+        customerId: '',
+        customerName: entry.customerName || '—',
+        status: 'COMPLETED',
+        startDate: new Date().toISOString().split('T')[0],
+        warrantyEndDate: new Date().toISOString().split('T')[0],
+        paymentStatus: 'UNPAID',
+        amount: 0,
+      } as Job;
+    }
+  } catch {
+    // ignore
+  }
+  const reports = JSON.parse(localStorage.getItem(TR19_REPORTS_STORAGE_KEY) || '{}') as Record<string, unknown>;
+  if (reports[jobId]) {
+    return {
+      id: jobId,
+      title: 'TR19 Report',
+      description: '',
+      customerId: '',
+      customerName: '—',
+      status: 'COMPLETED',
+      startDate: new Date().toISOString().split('T')[0],
+      warrantyEndDate: new Date().toISOString().split('T')[0],
+      paymentStatus: 'UNPAID',
+      amount: 0,
+    } as Job;
+  }
+  return null;
+}
+
 const AdminTR19ReportForm: React.FC = () => {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const { jobs, setJobs } = useAdmin();
   const [step, setStep] = useState(1);
 
-  const job = jobs.find((j) => j.id === jobId);
+  const job = resolveJob(jobId, jobs);
   const [surveyPhotos, setSurveyPhotos] = useState<string[]>([]);
 
   const [leadOperativeName, setLeadOperativeName] = useState('');
@@ -180,19 +232,28 @@ const AdminTR19ReportForm: React.FC = () => {
       tr19Compliant: meanPost < 50,
       warrantyEndDate: nextCleanDate,
     };
-    setJobs((prev: Job[]) => prev.map((j) => (j.id === jobId ? updatedJob : j)));
-    const localJobs = JSON.parse(localStorage.getItem('bengal_jobs') || '[]');
+    setJobs((prev: Job[]) => {
+      if (prev.some((j) => j.id === jobId)) return prev.map((j) => (j.id === jobId ? updatedJob : j));
+      return [updatedJob, ...prev];
+    });
+    const localJobs = JSON.parse(localStorage.getItem(JOBS_STORAGE_KEY) || '[]');
     const idx = localJobs.findIndex((j: { id: string }) => j.id === jobId);
     const updated = idx >= 0 ? localJobs.map((j: { id: string }) => (j.id === jobId ? updatedJob : j)) : [updatedJob, ...localJobs];
-    localStorage.setItem('bengal_jobs', JSON.stringify(updated));
+    localStorage.setItem(JOBS_STORAGE_KEY, JSON.stringify(updated));
 
     navigate('/dashboard/certificates', { state: { viewReportJobId: jobId } });
   };
 
   if (!job) {
     return (
-      <div className="p-10 text-center text-white">
-        Job not found.
+      <div className="p-10 max-w-md mx-auto text-center text-white space-y-4">
+        <p className="text-gray-400">No job or report found for this link. It may have been removed or the link is invalid.</p>
+        <button
+          onClick={() => navigate('/dashboard/tr19')}
+          className="px-6 py-3 rounded-xl font-bold text-sm bg-[#F2C200] text-black hover:brightness-110"
+        >
+          Back to TR19
+        </button>
       </div>
     );
   }

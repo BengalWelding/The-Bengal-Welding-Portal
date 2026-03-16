@@ -240,25 +240,38 @@ const AdminStockRequests: React.FC = () => {
                   {new Date(req.created_at).toLocaleDateString()}
                 </td>
                 <td className="px-6 py-4">
-                  {canEditRequest(req) && (
-                    <button
-                      onClick={() => {
-                        setSelectedRequest(req);
-                        setEditForm({
-                          item_description: req.item_description,
-                          quantity: req.quantity ?? '',
-                          site_or_job: req.site_or_job ?? '',
-                          notes: req.notes ?? '',
-                          status: req.status,
-                          admin_notes: req.admin_notes ?? '',
-                        });
-                      }}
-                      className="p-2 text-[#F2C200] hover:bg-[#F2C200]/10 rounded-lg transition-colors"
-                      title="Edit"
-                    >
-                      <i className="fas fa-pencil-alt" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {canEditRequest(req) && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setSelectedRequest(req);
+                            setEditForm({
+                              item_description: req.item_description,
+                              quantity: req.quantity ?? '',
+                              site_or_job: req.site_or_job ?? '',
+                              notes: req.notes ?? '',
+                              status: req.status,
+                              admin_notes: req.admin_notes ?? '',
+                            });
+                          }}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-[#333333] text-[#F2C200] hover:bg-[#F2C200] hover:text-black transition-all"
+                          title="Edit"
+                        >
+                          <i className="fas fa-pencil-alt text-[10px]" />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(req.id)}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-red-900/40 text-red-400 border border-red-800/50 hover:bg-red-800/40 transition-all"
+                          title="Delete"
+                        >
+                          <i className="fas fa-trash-alt text-[10px]" />
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -436,8 +449,9 @@ const AdminStockRequests: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleDelete(selectedRequest.id)}
-                    className="px-4 py-3 rounded-xl font-bold border border-red-500/50 text-red-400 hover:bg-red-500/10"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-red-900/40 text-red-400 border border-red-800/50 hover:bg-red-800/40 transition-all"
                   >
+                    <i className="fas fa-trash-alt text-[10px]" />
                     Delete
                   </button>
                 )}

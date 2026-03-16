@@ -47,6 +47,17 @@ const AdminReportLog: React.FC = () => {
     navigate(`/dashboard/jobs/${jobId}/tr19-report`);
   };
 
+  const deleteEntry = (entry: ReportLogEntry) => {
+    if (!window.confirm(`Remove "${entry.reportRef}" from the TR19 PCVR log? This does not delete the report data.`)) return;
+    const next = logEntries.filter((e) => e.id !== entry.id);
+    setLogEntries(next);
+    try {
+      localStorage.setItem(TR19_REPORT_LOG_KEY, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -100,7 +111,7 @@ const AdminReportLog: React.FC = () => {
                   })}
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-2">
+                  <div className="flex items-center justify-end gap-2 flex-wrap">
                     <button
                       onClick={() => viewReport(entry.jobId)}
                       className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-green-900/40 text-green-400 border border-green-800/50 hover:bg-green-800/40 transition-all"
@@ -112,6 +123,13 @@ const AdminReportLog: React.FC = () => {
                       className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-[#333333] text-[#F2C200] hover:bg-[#F2C200] hover:text-black transition-all"
                     >
                       Edit Report
+                    </button>
+                    <button
+                      onClick={() => deleteEntry(entry)}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-red-900/40 text-red-400 border border-red-800/50 hover:bg-red-800/40 transition-all"
+                    >
+                      <i className="fas fa-trash-alt text-[10px]"></i>
+                      Delete
                     </button>
                   </div>
                 </td>

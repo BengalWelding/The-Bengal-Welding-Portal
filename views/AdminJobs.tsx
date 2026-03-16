@@ -10,7 +10,7 @@ const TR19_REPORTS_STORAGE_KEY = 'bengal_tr19_reports';
 type StatusFilter = JobStatus | 'ALL';
 
 const AdminJobs: React.FC = () => {
-  const { jobs, searchQuery, setSearchQuery, handleDeleteJob, openAddJobModal } = useAdmin();
+  const { jobs, searchQuery, setSearchQuery, handleDeleteJob, openAddJobModal, openEditJobModal } = useAdmin();
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
 
@@ -43,6 +43,30 @@ const AdminJobs: React.FC = () => {
 
   const matchesSearch = (text?: string) =>
     !searchQuery || (text || '').toLowerCase().includes(searchQuery.toLowerCase());
+
+  const jobsByStatus = useMemo(() => {
+    const base = jobs.filter(
+      (j) =>
+        matchesSearch(j.title) ||
+        matchesSearch(j.customerName) ||
+        matchesSearch(j.customerId) ||
+        matchesSearch(j.id) ||
+        matchesSearch(j.contactName) ||
+        matchesSearch(j.description) ||
+        matchesSearch(j.jobType) ||
+        matchesSearch((j as Job & { certificateNumber?: string }).certificateNumber) ||
+        matchesSearch(j.customerAddress) ||
+        matchesSearch(j.customerPostcode) ||
+        matchesSearch(j.customerEmail)
+    );
+    return {
+      ALL: base.length,
+      PENDING: base.filter((j) => j.status === 'PENDING').length,
+      IN_PROGRESS: base.filter((j) => j.status === 'IN_PROGRESS').length,
+      COMPLETED: base.filter((j) => j.status === 'COMPLETED').length,
+      CANCELLED: base.filter((j) => j.status === 'CANCELLED').length,
+    };
+  }, [jobs, searchQuery]);
 
   const filteredJobs = jobs
     .filter(
@@ -79,37 +103,70 @@ const AdminJobs: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h1 className="text-xl font-bold text-white">Jobs</h1>
-        <div className="flex items-center gap-3">
-          <div className="relative min-w-[200px]">
-            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
-            <input
-              placeholder="Search by site, contact, job ref, certificate #..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-[#111111] border border-[#333333] rounded-xl text-sm text-white focus:outline-none focus:border-[#F2C200]"
-            />
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-black text-[#F2C200] tracking-tight">Jobs</h1>
+            <p className="text-gray-500 text-sm font-bold mt-0.5">
+              {statusFilter === 'ALL' && `${jobsByStatus.ALL} job${jobsByStatus.ALL !== 1 ? 's' : ''}`}
+              {statusFilter === 'PENDING' && `${jobsByStatus.PENDING} pending`}
+              {statusFilter === 'IN_PROGRESS' && `${jobsByStatus.IN_PROGRESS} in progress`}
+              {statusFilter === 'COMPLETED' && `${jobsByStatus.COMPLETED} completed`}
+              {statusFilter === 'CANCELLED' && `${jobsByStatus.CANCELLED} cancelled`}
+            </p>
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="px-4 py-2 bg-[#111111] border border-[#333333] rounded-xl text-sm text-white focus:outline-none focus:border-[#F2C200]"
-          >
-            <option value="ALL">All</option>
-            <option value="PENDING">Pending</option>
-            <option value="IN_PROGRESS">In Progress</option>
-            <option value="COMPLETED">Completed</option>
-            <option value="CANCELLED">Cancelled</option>
-          </select>
           <button
             type="button"
             onClick={openAddJobModal}
-            className="flex items-center gap-2 px-4 py-2 bg-[#F2C200] text-black rounded-xl text-sm font-bold hover:brightness-110 active:scale-95 transition-all shadow-md shadow-[#F2C2001A]"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-[#F2C200] text-black hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-[#F2C2001A] shrink-0"
           >
             <i className="fas fa-plus"></i>
             <span>Add Job</span>
           </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {(
+            [
+              { id: 'ALL' as const, label: 'All', icon: 'fa-briefcase' },
+              { id: 'PENDING' as const, label: 'Pending', icon: 'fa-clock' },
+              { id: 'IN_PROGRESS' as const, label: 'In Progress', icon: 'fa-spinner' },
+              { id: 'COMPLETED' as const, label: 'Completed', icon: 'fa-check' },
+              { id: 'CANCELLED' as const, label: 'Cancelled', icon: 'fa-times' },
+            ] as const
+          ).map(({ id, label, icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setStatusFilter(id)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${
+                statusFilter === id
+                  ? id === 'CANCELLED'
+                    ? 'bg-red-500/10 border-red-500 text-red-400'
+                    : id === 'COMPLETED'
+                      ? 'bg-green-500/10 border-green-500 text-green-400'
+                      : id === 'IN_PROGRESS'
+                        ? 'bg-blue-500/10 border-blue-500 text-blue-400'
+                        : id === 'PENDING'
+                          ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                          : 'bg-[#F2C200]/10 border-[#F2C200] text-[#F2C200]'
+                  : 'bg-[#111111] border-[#333333] text-gray-400 hover:border-[#F2C200] hover:text-white'
+              }`}
+            >
+              <i className={`fas ${icon} text-sm`}></i>
+              <span>{label}</span>
+              <span className="text-[10px] font-black opacity-80">({jobsByStatus[id]})</span>
+            </button>
+          ))}
+        </div>
+        <div className="relative w-full max-w-md">
+          <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
+          <input
+            type="text"
+            placeholder="Search by site, contact, job ref, certificate #..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-[#111111] border border-[#333333] rounded-full text-sm text-white focus:outline-none focus:border-[#F2C200]"
+          />
         </div>
       </div>
 
@@ -173,9 +230,10 @@ const AdminJobs: React.FC = () => {
                     </Link>
                     <button
                       onClick={() => handleDeleteJob(job.id)}
-                      className="text-red-500 hover:text-red-400 text-xs font-bold"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-red-900/40 text-red-400 border border-red-800/50 hover:bg-red-800/40 transition-all"
                     >
-                      <i className="fas fa-trash-alt"></i>
+                      <i className="fas fa-trash-alt text-[10px]"></i>
+                      Delete
                     </button>
                   </div>
                 </div>
@@ -267,18 +325,20 @@ const AdminJobs: React.FC = () => {
                           Start Survey
                         </Link>
                       )}
-                      <Link
-                        to={`/jobs/${job.id}`}
+                      <button
+                        type="button"
+                        onClick={() => openEditJobModal(job)}
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-[#F2C200] text-black hover:brightness-110 transition-all"
                       >
-                        View Record
-                      </Link>
+                        <i className="fas fa-pen"></i> Edit Record
+                      </button>
                       <button
                         onClick={() => handleDeleteJob(job.id)}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-transparent text-red-400 border border-red-800/50 hover:bg-red-900/30 transition-all"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-red-900/40 text-red-400 border border-red-800/50 hover:bg-red-800/40 transition-all"
                         title="Delete job"
                       >
-                        <i className="fas fa-trash-alt"></i> Delete
+                        <i className="fas fa-trash-alt text-[10px]"></i>
+                        Delete
                       </button>
                     </div>
                   </td>

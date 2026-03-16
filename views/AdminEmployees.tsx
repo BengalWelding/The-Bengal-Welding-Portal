@@ -102,10 +102,11 @@ const AdminEmployees: React.FC = () => {
                           refresh();
                         } else setError(result.error ?? 'Failed to remove');
                       }}
-                      className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-red-900/40 text-red-400 border border-red-800/50 hover:bg-red-800/40 transition-all disabled:opacity-50"
                       title="Remove employee"
                     >
-                      <i className={`fas ${deletingId === emp.id ? 'fa-spinner fa-spin' : 'fa-trash'}`} />
+                      <i className={`fas text-[10px] ${deletingId === emp.id ? 'fa-spinner fa-spin' : 'fa-trash-alt'}`} />
+                      Delete
                     </button>
                   ) : null}
                 </td>

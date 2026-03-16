@@ -51,7 +51,15 @@ const generateUniqueCertificateNumber = (jobs: Job[]): string => {
   return `TR19-${String(max + 1).padStart(6, '0')}`;
 };
 
-const AdminCertificates: React.FC = () => {
+interface AdminCertificatesProps {
+  externalCertificateFromReport?: { job: Job; report: TR19Report } | null;
+  onCloseExternalCertificate?: () => void;
+}
+
+const AdminCertificates: React.FC<AdminCertificatesProps> = ({
+  externalCertificateFromReport,
+  onCloseExternalCertificate,
+}) => {
   const { jobs, setJobs, searchQuery, setSearchQuery, handleDeleteJob } = useAdmin();
   const location = useLocation();
   const navigate = useNavigate();
@@ -61,6 +69,9 @@ const AdminCertificates: React.FC = () => {
   const [editForm, setEditForm] = useState<EditCertificateForm | null>(null);
   const [certificateView, setCertificateView] = useState<EditCertificateForm | null>(null);
   const [certificateFromReport, setCertificateFromReport] = useState<{ job: Job; report: TR19Report } | null>(null);
+
+  const effectiveCertificateFromReport =
+    externalCertificateFromReport !== undefined ? externalCertificateFromReport : certificateFromReport;
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isNewCertificateModalOpen, setIsNewCertificateModalOpen] = useState(false);
   const [newCertificateForm, setNewCertificateForm] = useState<EditCertificateForm | null>(null);
@@ -417,26 +428,29 @@ const AdminCertificates: React.FC = () => {
                     )}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    {tr19Reports[job.id] && (
+                    <div className="flex items-center justify-end gap-2 flex-wrap">
+                      {tr19Reports[job.id] && (
+                        <button
+                          onClick={() => openCertificateFromReport(job)}
+                          className="text-[#0070ba] hover:text-[#005a94] text-xs font-bold"
+                        >
+                          View TR19 Report
+                        </button>
+                      )}
                       <button
-                        onClick={() => openCertificateFromReport(job)}
-                        className="text-[#0070ba] hover:text-[#005a94] text-xs font-bold mr-4"
+                        onClick={() => openEditModal(job)}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-[#333333] text-[#F2C200] hover:bg-[#F2C200] hover:text-black transition-all"
                       >
-                        View TR19 Report
+                        Edit
                       </button>
-                    )}
-                    <button
-                      onClick={() => openEditModal(job)}
-                      className="text-gray-400 hover:text-[#F2C200] text-xs font-bold mr-4"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteJob(job.id)}
-                      className="text-red-400 hover:text-red-300 text-xs font-bold"
-                    >
-                      Delete
-                    </button>
+                      <button
+                        onClick={() => handleDeleteJob(job.id)}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-red-900/40 text-red-400 border border-red-800/50 hover:bg-red-800/40 transition-all"
+                      >
+                        <i className="fas fa-trash-alt text-[10px]"></i>
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -449,7 +463,7 @@ const AdminCertificates: React.FC = () => {
       </div>
 
       {/* TR19 Report-based Certificate View */}
-      {certificateFromReport && (
+      {effectiveCertificateFromReport && (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[700] flex items-center justify-center p-4 overflow-y-auto print:bg-white print:backdrop-blur-none print:p-0 print:static">
           <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl my-8 overflow-hidden print:shadow-none print:my-0">
             <div id="certificate-print-report" className="p-10 space-y-6 text-sm">
@@ -460,7 +474,7 @@ const AdminCertificates: React.FC = () => {
                   <p className="text-xs text-gray-500">VHR Registration: —</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-mono font-bold text-gray-900">Report Ref {certificateFromReport.job.certificateNumber || certificateFromReport.job.id}</p>
+                  <p className="font-mono font-bold text-gray-900">Report Ref {effectiveCertificateFromReport.job.certificateNumber || effectiveCertificateFromReport.job.id}</p>
                   <p className="text-xs text-gray-500">{new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                 </div>
               </div>
@@ -473,7 +487,7 @@ const AdminCertificates: React.FC = () => {
                   <div>
                     <p className="text-green-600 font-bold">SYSTEM CLEANED ENTIRELY: YES</p>
                     {(() => {
-                      const r = certificateFromReport.report.micronReadings;
+                      const r = effectiveCertificateFromReport.report.micronReadings;
                       const postVals = r.filter((x) => x.postClean && !isNaN(parseFloat(x.postClean)));
                       const meanPost = postVals.length ? postVals.reduce((s, x) => s + parseFloat(x.postClean), 0) / postVals.length : 0;
                       return (
@@ -483,7 +497,7 @@ const AdminCertificates: React.FC = () => {
                   </div>
                   <div className="text-right">
                     {(() => {
-                      const r = certificateFromReport.report.micronReadings;
+                      const r = effectiveCertificateFromReport.report.micronReadings;
                       const preVals = r.filter((x) => x.preClean && !isNaN(parseFloat(x.preClean)));
                       const meanPre = preVals.length ? preVals.reduce((s, x) => s + parseFloat(x.preClean), 0) / preVals.length : 0;
                       return <p className="text-blue-600 font-bold">MEAN PRE-CLEAN READING: {meanPre.toFixed(1)}µm</p>;
@@ -496,15 +510,15 @@ const AdminCertificates: React.FC = () => {
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <h4 className="text-xs font-black text-gray-500 uppercase mb-2">Client Details</h4>
-                  <p className="text-gray-700"><span className="font-bold">CLIENT / BUSINESS NAME:</span> {certificateFromReport.job.customerName || '—'}</p>
-                  <p className="text-gray-700"><span className="font-bold">SITE CONTACT:</span> {certificateFromReport.job.contactName || '—'}</p>
-                  <p className="text-gray-700"><span className="font-bold">CONTACT EMAIL:</span> {certificateFromReport.job.customerEmail || '—'}</p>
+                  <p className="text-gray-700"><span className="font-bold">CLIENT / BUSINESS NAME:</span> {effectiveCertificateFromReport.job.customerName || '—'}</p>
+                  <p className="text-gray-700"><span className="font-bold">SITE CONTACT:</span> {effectiveCertificateFromReport.job.contactName || '—'}</p>
+                  <p className="text-gray-700"><span className="font-bold">CONTACT EMAIL:</span> {effectiveCertificateFromReport.job.customerEmail || '—'}</p>
                   <p className="text-gray-700"><span className="font-bold">KITCHEN USE CATEGORY:</span> Moderate Use 6-12hrs/day</p>
                 </div>
                 <div>
                   <h4 className="text-xs font-black text-gray-500 uppercase mb-2">Site Details</h4>
-                  <p className="text-gray-700"><span className="font-bold">SITE ADDRESS:</span> {[certificateFromReport.job.customerAddress, certificateFromReport.job.customerPostcode].filter(Boolean).join(', ') || '—'}</p>
-                  <p className="text-gray-700"><span className="font-bold">CONTACT PHONE:</span> {certificateFromReport.job.customerPhone || '—'}</p>
+                  <p className="text-gray-700"><span className="font-bold">SITE ADDRESS:</span> {[effectiveCertificateFromReport.job.customerAddress, effectiveCertificateFromReport.job.customerPostcode].filter(Boolean).join(', ') || '—'}</p>
+                  <p className="text-gray-700"><span className="font-bold">CONTACT PHONE:</span> {effectiveCertificateFromReport.job.customerPhone || '—'}</p>
                   <p className="text-gray-700"><span className="font-bold">TYPE OF PREMISES:</span> Restaurant</p>
                 </div>
               </div>
@@ -513,21 +527,21 @@ const AdminCertificates: React.FC = () => {
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <h4 className="text-xs font-black text-gray-500 uppercase mb-2">Job Details</h4>
-                  <p className="text-gray-700"><span className="font-bold">JOB NUMBER:</span> {certificateFromReport.job.id}</p>
-                  <p className="text-gray-700"><span className="font-bold">TIME ON SITE:</span> {certificateFromReport.report.timeOnSiteStart} - {certificateFromReport.report.timeOnSiteEnd}</p>
-                  <p className="text-gray-700"><span className="font-bold">LEAD BESA GHO/GHT CERT NO.:</span> {certificateFromReport.report.besaCertNo || '—'}</p>
+                  <p className="text-gray-700"><span className="font-bold">JOB NUMBER:</span> {effectiveCertificateFromReport.job.id}</p>
+                  <p className="text-gray-700"><span className="font-bold">TIME ON SITE:</span> {effectiveCertificateFromReport.report.timeOnSiteStart} - {effectiveCertificateFromReport.report.timeOnSiteEnd}</p>
+                  <p className="text-gray-700"><span className="font-bold">LEAD BESA GHO/GHT CERT NO.:</span> {effectiveCertificateFromReport.report.besaCertNo || '—'}</p>
                 </div>
                 <div>
-                  <p className="text-gray-700 mt-6"><span className="font-bold">DATE OF CLEAN:</span> {new Date(certificateFromReport.job.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                  <p className="text-gray-700"><span className="font-bold">LEAD OPERATIVE:</span> {certificateFromReport.report.leadOperativeName}</p>
-                  <p className="text-gray-700"><span className="font-bold">CLEANING METHOD(S):</span> {certificateFromReport.report.cleaningMethods?.length ? certificateFromReport.report.cleaningMethods.join(', ') : '—'}</p>
+                  <p className="text-gray-700 mt-6"><span className="font-bold">DATE OF CLEAN:</span> {new Date(effectiveCertificateFromReport.job.startDate || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                  <p className="text-gray-700"><span className="font-bold">LEAD OPERATIVE:</span> {effectiveCertificateFromReport.report.leadOperativeName || '—'}</p>
+                  <p className="text-gray-700"><span className="font-bold">CLEANING METHOD(S):</span> {effectiveCertificateFromReport.report.cleaningMethods?.length ? effectiveCertificateFromReport.report.cleaningMethods.join(', ') : '—'}</p>
                 </div>
               </div>
-              {certificateFromReport.report.areasCleaned?.length > 0 && (
+              {effectiveCertificateFromReport.report.areasCleaned?.length > 0 && (
                 <div>
                   <h4 className="text-xs font-black text-gray-500 uppercase mb-2">Areas Cleaned</h4>
                   <div className="flex flex-wrap gap-2">
-                    {certificateFromReport.report.areasCleaned.map((a) => (
+                    {effectiveCertificateFromReport.report.areasCleaned.map((a) => (
                       <span key={a} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 rounded text-xs">✓ {a}</span>
                     ))}
                   </div>
@@ -547,7 +561,7 @@ const AdminCertificates: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {certificateFromReport.report.micronReadings?.map((r, i) => {
+                    {effectiveCertificateFromReport.report.micronReadings?.map((r, i) => {
                       const post = parseFloat(r.postClean);
                       const pass = !isNaN(post) && post < 50;
                       return (
@@ -562,7 +576,7 @@ const AdminCertificates: React.FC = () => {
                   </tbody>
                 </table>
                 {(() => {
-                  const r = certificateFromReport.report.micronReadings || [];
+                  const r = effectiveCertificateFromReport.report.micronReadings || [];
                   const preVals = r.filter((x) => x.preClean && !isNaN(parseFloat(x.preClean))).map((x) => parseFloat(x.preClean));
                   const postVals = r.filter((x) => x.postClean && !isNaN(parseFloat(x.postClean))).map((x) => parseFloat(x.postClean));
                   const meanPre = preVals.length ? preVals.reduce((a, b) => a + b, 0) / preVals.length : 0;
@@ -580,18 +594,18 @@ const AdminCertificates: React.FC = () => {
               <div className="bg-blue-600 text-white p-4 rounded-lg">
                 <p className="text-xs font-bold uppercase mb-1">Next Recommended Clean Due Date</p>
                 <p className="text-xl font-black">
-                  {certificateFromReport.report.nextRecommendedCleanDate
-                    ? new Date(certificateFromReport.report.nextRecommendedCleanDate + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+                  {effectiveCertificateFromReport.report.nextRecommendedCleanDate
+                    ? new Date(effectiveCertificateFromReport.report.nextRecommendedCleanDate + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
                     : new Date(new Date().setMonth(new Date().getMonth() + 6)).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </p>
               </div>
 
               {/* Photographic Evidence */}
-              {certificateFromReport.report.photos?.length > 0 && (
+              {effectiveCertificateFromReport.report.photos?.length > 0 && (
                 <div>
                   <h4 className="text-xs font-black text-gray-500 uppercase mb-3">Photographic Evidence</h4>
                   <div className="grid grid-cols-3 gap-2">
-                    {certificateFromReport.report.photos.slice(0, 6).map((src, i) => (
+                    {effectiveCertificateFromReport.report.photos.slice(0, 6).map((src, i) => (
                       <img
                         key={i}
                         src={src}
@@ -621,8 +635,8 @@ const AdminCertificates: React.FC = () => {
                 <div className="flex gap-8">
                   <div>
                     <p className="text-xs font-bold text-gray-500">LEAD OPERATIVE</p>
-                    <p className="font-bold text-gray-900">{certificateFromReport.report.leadOperativeName}</p>
-                    <p className="text-xs text-gray-500">Date: {new Date(certificateFromReport.report.signedAt || new Date()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                    <p className="font-bold text-gray-900">{effectiveCertificateFromReport.report.leadOperativeName || '—'}</p>
+                    <p className="text-xs text-gray-500">Date: {new Date(effectiveCertificateFromReport.report.signedAt || new Date()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                   </div>
                 </div>
               </div>
@@ -631,7 +645,7 @@ const AdminCertificates: React.FC = () => {
               <button
                 onClick={() => {
                   const el = document.getElementById('certificate-print-report');
-                  if (el) html2pdf().set({ filename: `TR19-report-${certificateFromReport.job.id}.pdf` }).from(el).save();
+                  if (el) html2pdf().set({ filename: `TR19-report-${effectiveCertificateFromReport.job.id}.pdf` }).from(el).save();
                 }}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-sm bg-[#0070ba] text-white hover:brightness-110"
               >
@@ -639,7 +653,10 @@ const AdminCertificates: React.FC = () => {
                 Download PDF
               </button>
               <button
-                onClick={() => setCertificateFromReport(null)}
+                onClick={() => {
+                  setPhotoPreview(null);
+                  onCloseExternalCertificate ? onCloseExternalCertificate() : setCertificateFromReport(null);
+                }}
                 className="px-5 py-2.5 rounded-lg font-bold text-sm bg-[#111111] text-white hover:bg-[#222222]"
               >
                 Close

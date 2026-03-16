@@ -33,6 +33,14 @@ import JobDetails from './views/JobDetails';
 import AIAssistant from './components/AIAssistant';
 import AddToHomeScreenPrompt from './components/AddToHomeScreenPrompt';
 
+/** Admin/Engineer: redirect job link to Jobs page. Customer: show JobDetails. */
+function JobRoute({ user }: { user: User }) {
+  if (user.role === 'ADMIN' || user.role === 'ENGINEER') {
+    return <Navigate to="/dashboard/jobs" replace />;
+  }
+  return <JobDetails role={user.role} />;
+}
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
 
@@ -132,7 +140,7 @@ const App: React.FC = () => {
                 <Route path="/products" element={<ProductsCatalog user={user} />} />
                 <Route path="/gocardless/callback" element={<GoCardlessCallback />} />
                 <Route path="/gocardless/service-request/callback" element={<GoCardlessServiceRequestCallback />} />
-                <Route path="/jobs/:id" element={<JobDetails role={user.role} />} />
+                <Route path="/jobs/:id" element={<JobRoute user={user} />} />
                 <Route path="*" element={<Navigate to="/dashboard" />} />
               </>
             )}

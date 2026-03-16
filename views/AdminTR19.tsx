@@ -1,15 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { listSiteSurveys, deleteSiteSurvey } from '../lib/siteSurveys';
 import type { SiteSurvey } from '../lib/siteSurveys';
 import { useAdmin } from '../contexts/AdminContext';
-import { TR19_REPORTS_STORAGE_KEY } from './TR19ReportForm';
+import { TR19_REPORTS_STORAGE_KEY, type TR19Report } from './TR19ReportForm';
+import type { Job } from '../types';
 
-const AdminTR19: React.FC = () => {
+function emptyReportForJob(jobId: string): TR19Report {
+  return {
+    jobId,
+    leadOperativeName: '',
+    besaCertNo: '',
+    secondOperativeName: '',
+    secondOpCertNo: '',
+    timeOnSiteStart: '',
+    timeOnSiteEnd: '',
+    micronReadings: [],
+    photos: [],
+    cleaningMethods: [],
+    areasCleaned: [],
+    signedBy: '',
+    signedAt: '',
+  };
+}
+
+interface AdminTR19Props {
+  onOpenCertificate?: (payload: { job: Job; report: TR19Report }) => void;
+}
+
+const AdminTR19: React.FC<AdminTR19Props> = ({ onOpenCertificate }) => {
   const [siteSurveys, setSiteSurveys] = useState<SiteSurvey[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const navigate = useNavigate();
   const { jobs } = useAdmin();
 
   const loadSurveys = () => {
@@ -53,20 +75,17 @@ const AdminTR19: React.FC = () => {
       alert('Linked job not found. Please check the Linked Job on this TR19 site.');
       return;
     }
-    let reports: Record<string, unknown> = {};
+    let reports: Record<string, TR19Report> = {};
     try {
       const raw = localStorage.getItem(TR19_REPORTS_STORAGE_KEY);
       reports = raw ? JSON.parse(raw) : {};
     } catch {
       reports = {};
     }
-    if (!reports[job.id]) {
-      if (window.confirm('Complete the TR19 PCVR for this job before generating a certificate. Go to the PCVR form now?')) {
-        navigate(`/dashboard/jobs/${job.id}/tr19-report`);
-      }
-      return;
+    const report = reports[job.id] ?? emptyReportForJob(job.id);
+    if (onOpenCertificate) {
+      onOpenCertificate({ job, report });
     }
-    navigate('/dashboard/certificates', { state: { viewReportJobId: job.id } });
   };
 
   return (
@@ -162,14 +181,24 @@ const AdminTR19: React.FC = () => {
                     {s.survey_type} — {s.work_required.slice(0, 80)}
                     {s.work_required.length > 80 ? '...' : ''}
                   </p>
-                  <div className="flex items-center gap-4 mt-2">
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <Link
                       to={`/dashboard/tr19/edit/${s.id}`}
-                      className="text-[#F2C200] hover:underline text-xs font-bold flex items-center gap-1"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-[#333333] text-[#F2C200] hover:bg-[#F2C200] hover:text-black transition-all"
                     >
-                      <i className="fas fa-pencil-alt"></i> Edit
+                      <i className="fas fa-pencil-alt text-[10px]"></i>
+                      Edit site
                     </Link>
-                    {s.status === 'submitted' && (
+                    {s.job_id && (
+                      <Link
+                        to={`/dashboard/jobs/${s.job_id}/tr19-report`}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-[#333333] text-[#F2C200] hover:bg-[#F2C200] hover:text-black transition-all"
+                      >
+                        <i className="fas fa-file-alt text-[10px]"></i>
+                        Edit report
+                      </Link>
+                    )}
+                    {s.job_id && (
                       <button
                         onClick={() => handleGenerateCertificate(s)}
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-green-900/40 text-green-400 border border-green-800/50 hover:bg-green-800/40 transition-all"
@@ -180,9 +209,10 @@ const AdminTR19: React.FC = () => {
                     )}
                     <button
                       onClick={() => handleDelete(s)}
-                      className="text-red-500 hover:text-red-400 text-xs font-bold flex items-center gap-1"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-red-900/40 text-red-400 border border-red-800/50 hover:bg-red-800/40 transition-all"
                     >
-                      <i className="fas fa-trash-alt"></i> Delete
+                      <i className="fas fa-trash-alt text-[10px]"></i>
+                      Delete
                     </button>
                   </div>
                 </div>

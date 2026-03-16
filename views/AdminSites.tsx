@@ -535,7 +535,7 @@ const AdminSites: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-3">
+                    <div className="flex items-center justify-end gap-2 flex-wrap">
                       {s.media && s.media.length > 0 && (
                         <button
                           onClick={() => {
@@ -557,17 +557,19 @@ const AdminSites: React.FC = () => {
                       </button>
                       <button
                         onClick={() => openEdit(s)}
-                        className="text-gray-500 hover:text-[#F2C200] transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-[#333333] text-[#F2C200] hover:bg-[#F2C200] hover:text-black transition-all"
                         title="Edit Site"
                       >
-                        <i className="fas fa-pen"></i>
+                        <i className="fas fa-pen text-[10px]"></i>
+                        Edit
                       </button>
                       <button
                         onClick={() => handleDelete(s)}
-                        className="text-gray-500 hover:text-red-400 transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-red-900/40 text-red-400 border border-red-800/50 hover:bg-red-800/40 transition-all"
                         title="Delete"
                       >
-                        <i className="fas fa-trash-alt"></i>
+                        <i className="fas fa-trash-alt text-[10px]"></i>
+                        Delete
                       </button>
                     </div>
                   </td>
