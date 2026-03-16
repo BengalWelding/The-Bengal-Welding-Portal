@@ -154,3 +154,12 @@ export async function updateJob(id: string, updates: Partial<{
 
   if (error) throw new Error(error.message || 'Failed to update job');
 }
+
+export async function deleteJob(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('jobs')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new Error(error.message || 'Failed to delete job');
+}

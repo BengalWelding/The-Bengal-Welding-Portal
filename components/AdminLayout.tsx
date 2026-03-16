@@ -12,6 +12,7 @@ interface AdminLayoutProps {
 
 const SIDEBAR_ITEMS = [
   { path: '/dashboard', label: 'Dashboard', icon: 'fa-gauge-high' },
+  { path: '/dashboard/customers', label: 'Customers', icon: 'fa-users' },
   { path: '/dashboard/add-customer', label: 'Add Customer', icon: 'fa-user-plus' },
   { path: '/dashboard/leads', label: 'Leads', icon: 'fa-envelope-circle-check' },
   { path: '/dashboard/stock-requests', label: 'Stock Requests', icon: 'fa-boxes-stacked' },

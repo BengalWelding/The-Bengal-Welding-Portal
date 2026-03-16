@@ -9,13 +9,11 @@ interface ProductsCatalogProps {
 }
 
 function formatProductPrice(product: Product): string {
+  if (product.name === 'Tandoori Oven') {
+    return '£1000+';
+  }
   const min = product.price_min ?? product.price;
-  const max = product.price_max;
-  const hasRange = max != null && max !== min;
-  const amount = hasRange
-    ? `£${min.toLocaleString()} – £${max.toLocaleString()}`
-    : `£${min.toLocaleString()}`;
-  return amount;
+  return `£${min.toLocaleString()}+`;
 }
 
 const ProductsCatalog: React.FC<ProductsCatalogProps> = () => {

@@ -5,6 +5,7 @@ import { MOCK_JOBS } from '../mockData';
 import { JobStatus, QuoteRequest, Job } from '../types';
 import { getAllUsers, registerEmployee } from '../lib/auth';
 import type { StoredUser } from '../lib/auth';
+import { deleteJob } from '../lib/jobs';
 
 interface AdminDashboardProps {
   quotes: QuoteRequest[];
@@ -84,9 +85,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ quotes, onUpdateQuote }
   // Employee creation
   const [employees, setEmployees] = useState<StoredUser[]>([]);
   const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
-  const [employeeForm, setEmployeeForm] = useState({ name: '', email: '', password: '', grantAdminAccess: false });
+  const [employeeForm, setEmployeeForm] = useState<{ name: string; email: string; password: string; role: 'ENGINEER' | 'ADMIN' }>({
+    name: '',
+    email: '',
+    password: '',
+    role: 'ENGINEER',
+  });
   const [employeeError, setEmployeeError] = useState('');
-  const [employeeSuccess, setEmployeeSuccess] = useState<boolean | { hadAdminAccess: boolean }>(false);
+  const [employeeSuccess, setEmployeeSuccess] = useState<boolean | { role: 'ENGINEER' | 'ADMIN' }>(false);
 
   useEffect(() => {
     getAllUsers().then((users) => setEmployees(users.filter((u) => u.role === 'ADMIN')));
@@ -199,12 +205,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ quotes, onUpdateQuote }
     setIsJobModalOpen(true);
   };
 
-  const handleDeleteJob = (id: string) => {
-    if (window.confirm("Are you sure you want to remove this service job?")) {
-      const updated = jobs.filter(j => j.id !== id);
-      setJobs(updated);
-      localStorage.setItem('bengal_jobs', JSON.stringify(updated));
+  const handleDeleteJob = async (id: string) => {
+    if (!window.confirm("Are you sure you want to remove this service job?")) return;
+    try {
+      await deleteJob(id);
+    } catch {
+      // Job may only exist in localStorage (mock/legacy data) – continue with local removal
     }
+    const updated = jobs.filter(j => j.id !== id);
+    setJobs(updated);
+    localStorage.setItem('bengal_jobs', JSON.stringify(updated));
   };
 
   const handleSaveJob = () => {
@@ -275,11 +285,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ quotes, onUpdateQuote }
       name: employeeForm.name.trim(),
       email: employeeForm.email.trim(),
       password: employeeForm.password,
-      grantAdminAccess: employeeForm.grantAdminAccess,
+      role: employeeForm.role,
     });
     if (result.success) {
-      setEmployeeSuccess({ hadAdminAccess: employeeForm.grantAdminAccess });
-      setEmployeeForm({ name: '', email: '', password: '', grantAdminAccess: false });
+      setEmployeeSuccess({ role: employeeForm.role });
+      setEmployeeForm({ name: '', email: '', password: '', role: 'ENGINEER' });
       getAllUsers().then((users) => setEmployees(users.filter((u) => u.role === 'ADMIN')));
       setTimeout(() => {
         setIsAddEmployeeModalOpen(false);
@@ -556,7 +566,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ quotes, onUpdateQuote }
                 <h2 className="text-lg font-bold text-white">Admin Staff (Employees)</h2>
                 <button
                   onClick={() => {
-                    setEmployeeForm({ name: '', email: '', password: '', grantAdminAccess: false });
+                    setEmployeeForm({ name: '', email: '', password: '', role: 'ENGINEER' });
                     setEmployeeError('');
                     setEmployeeSuccess(false);
                     setIsAddEmployeeModalOpen(true);
@@ -1049,7 +1059,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ quotes, onUpdateQuote }
               )}
               {employeeSuccess && (
                 <div className="p-3 rounded-xl bg-green-900/30 border border-green-800/50 text-green-400 text-sm font-medium">
-                  Employee account created. {typeof employeeSuccess === 'object' && employeeSuccess.hadAdminAccess ? 'They can sign in with admin view access.' : 'They will see the customer dashboard until you grant admin access.'}
+                  Employee account created. They can sign in with admin view as {typeof employeeSuccess === 'object' && employeeSuccess.role ? employeeSuccess.role.toLowerCase() : 'admin'}.
                 </div>
               )}
               <div>
@@ -1083,15 +1093,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ quotes, onUpdateQuote }
                 />
                 <p className="text-[10px] text-gray-500 mt-1">Share this password with the employee so they can sign in.</p>
               </div>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={employeeForm.grantAdminAccess ?? false}
-                  onChange={(e) => setEmployeeForm({ ...employeeForm, grantAdminAccess: e.target.checked })}
-                  className="w-5 h-5 rounded border border-[#333333] bg-black text-[#F2C200] focus:ring-[#F2C200]"
-                />
-                <span className="text-sm font-bold text-gray-300">Grant admin view access</span>
-              </label>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Role</label>
+                <select
+                  value={employeeForm.role}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, role: e.target.value as 'ENGINEER' | 'ADMIN' })}
+                  className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none font-bold"
+                >
+                  <option value="ENGINEER">Engineer</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+                <p className="text-[10px] text-gray-500 mt-1">Both have admin view access; title shows in top right.</p>
+              </div>
               <div className="pt-4 border-t border-[#333333]">
                 <button
                   onClick={handleAddEmployee}

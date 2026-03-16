@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { User, Job } from '../types';
-import { MOCK_JOBS } from '../mockData';
+import { MOCK_JOBS, MOCK_PRODUCTS } from '../mockData';
 import WarrantyCard from '../components/WarrantyCard';
 import { COLORS } from '../constants';
 import { createServiceRequest, createServiceRequestCheckout } from '../lib/api';
@@ -12,6 +12,7 @@ import { listServiceRequestsForCustomer, type ServiceRequestRow } from '../lib/s
 import { listJobsForCustomer } from '../lib/jobs';
 import { createComplaint, listComplaintsForCustomer } from '../lib/complaints';
 import { getCustomerAccessDetails, upsertCustomerAccessDetails } from '../lib/customerAccessDetails';
+import { listCustomerProductsForCustomer, type CustomerProduct } from '../lib/customerProducts';
 
 interface CustomerDashboardProps {
   user: User;
@@ -20,12 +21,14 @@ interface CustomerDashboardProps {
 type TabType = 'ACTIVE' | 'HISTORY' | 'PROFILE';
 
 const SERVICE_REQUEST_BANNER_DISMISSED_KEY = 'bengal_sr_banner_dismissed';
+const MY_PRODUCTS_VISIBLE_KEY = 'bengal_my_products_visible';
 
 const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser }) => {
   const [activeTab, setActiveTab] = useState<TabType>('ACTIVE');
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   const [supabaseJobs, setSupabaseJobs] = useState<Job[]>([]);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequestRow[]>([]);
+  const [customerProducts, setCustomerProducts] = useState<CustomerProduct[]>([]);
   const [user, setUser] = useState<User>(initialUser);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState<Partial<User>>({});
@@ -49,6 +52,14 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser
   const [serviceSuccessMessage, setServiceSuccessMessage] = useState<string | null>(null);
   const [serviceErrorMessage, setServiceErrorMessage] = useState<string | null>(null);
   const [serviceRequestsExpanded, setServiceRequestsExpanded] = useState(true);
+  const [showMyProducts, setShowMyProducts] = useState<boolean>(() => {
+    try {
+      const savedPreference = localStorage.getItem(MY_PRODUCTS_VISIBLE_KEY);
+      return savedPreference === null ? true : savedPreference === '1';
+    } catch {
+      return true;
+    }
+  });
   const [notificationBannerDismissed, setNotificationBannerDismissed] = useState<Set<string>>(() => {
     try {
       const raw = sessionStorage.getItem(SERVICE_REQUEST_BANNER_DISMISSED_KEY);
@@ -93,6 +104,12 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser
     dateOfIncident: '',
     preferredContact: '',
   });
+
+  const productNameByCode = React.useMemo(() => {
+    const map = new Map<string, string>();
+    MOCK_PRODUCTS.forEach((p) => map.set(p.id, p.name));
+    return map;
+  }, []);
 
   const dismissBanner = (id: string) => {
     setNotificationBannerDismissed((prev) => {
@@ -157,15 +174,17 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser
   useEffect(() => {
     const load = async () => {
       try {
-        const [jobs, reqs, comps, access] = await Promise.all([
+        const [jobs, reqs, comps, access, products] = await Promise.all([
           listJobsForCustomer(user.id),
           listServiceRequestsForCustomer(user.id),
           listComplaintsForCustomer(user.id).catch(() => []),
           getCustomerAccessDetails(user.id).catch(() => null),
+          listCustomerProductsForCustomer(user.id).catch(() => []),
         ]);
         setSupabaseJobs(jobs);
         setServiceRequests(reqs);
         setComplaints(comps);
+        setCustomerProducts(products);
         if (access) {
           setAccessDetails({
             accessDifficulty: (access.access_difficulty as '' | 'easy' | 'medium' | 'difficult') || '',
@@ -258,6 +277,18 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser
       address: user.address || ''
     });
     setIsEditingProfile(true);
+  };
+
+  const toggleMyProductsVisibility = () => {
+    setShowMyProducts((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(MY_PRODUCTS_VISIBLE_KEY, next ? '1' : '0');
+      } catch {
+        // ignore localStorage write failures
+      }
+      return next;
+    });
   };
 
   return (
@@ -456,7 +487,11 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser
               <p className="text-2xl font-bold text-white">{myJobs.filter(j => j.status !== 'COMPLETED').length}</p>
             </div>
             
-            {myJobs.length > 0 && <WarrantyCard endDate={myJobs[0].warrantyEndDate} />}
+            {customerProducts.length > 0 ? (
+              <WarrantyCard endDate={customerProducts[0].warranty_end} />
+            ) : (
+              myJobs.length > 0 && <WarrantyCard endDate={myJobs[0].warrantyEndDate} />
+            )}
 
             <div className="bg-[#111111] p-5 rounded-xl border border-[#333333] shadow-sm">
               <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: '#1A1A1A' }}>
@@ -472,59 +507,147 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser
           <section>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-[#F2C200]">My Products</h2>
-              <Link to="/products" className="text-sm font-semibold hover:text-white transition-colors" style={{ color: COLORS.primary }}>
-                View Equipment Catalog
-              </Link>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={toggleMyProductsVisibility}
+                  aria-pressed={showMyProducts}
+                  className={`relative inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs sm:text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-[#F2C200] ${
+                    showMyProducts
+                      ? 'bg-[#F2C200] text-black border-[#F2C200] shadow-[0_0_0_2px_rgba(242,194,0,0.18)]'
+                      : 'bg-[#111111] text-[#F2C200] border-[#F2C200]'
+                  }`}
+                >
+                  <span className="uppercase tracking-wide">{showMyProducts ? 'Hide My Products' : 'Show My Products'}</span>
+                  <span
+                    className={`relative inline-flex h-5 w-10 rounded-full transition-colors ${
+                      showMyProducts ? 'bg-black/25' : 'bg-[#333333]'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                        showMyProducts ? 'translate-x-5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </span>
+                </button>
+                <Link to="/products" className="text-sm font-semibold hover:text-white transition-colors" style={{ color: COLORS.primary }}>
+                  View Equipment Catalog
+                </Link>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4">
-              {myJobs.length === 0 ? (
-                <div className="p-8 bg-[#111111] rounded-xl border border-dashed border-[#333333] text-center text-gray-500">
-                  No products found for your account. Browse the Equipment Catalog to get started.
-                </div>
-              ) : (
-                <>
-                  {myJobs.map(job => (
-                    <Link 
-                      key={job.id} 
-                      to={`/jobs/${job.id}`}
-                      className="group bg-[#111111] p-5 rounded-xl border border-[#333333] shadow-sm hover:border-[#F2C200] transition-all flex items-center justify-between"
-                    >
-                      <div className="flex items-center space-x-4">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                          job.status === 'COMPLETED' ? 'bg-green-100 text-green-600' : 'bg-[#FFF9E6] text-[#B28900]'
-                        }`}>
-                          <i className={`fas ${job.status === 'COMPLETED' ? 'fa-check' : 'fa-spinner fa-spin'}`}></i>
+            {showMyProducts ? (
+              <div className="grid grid-cols-1 gap-4">
+                {customerProducts.length === 0 && myJobs.length === 0 ? (
+                  <div className="p-8 bg-[#111111] rounded-xl border border-dashed border-[#333333] text-center text-gray-500">
+                    No products found for your account. Browse the Equipment Catalog to get started.
+                  </div>
+                ) : (
+                  <>
+                    {customerProducts.map((product) => {
+                      const daysRemaining = Math.max(
+                        Math.ceil(
+                          (new Date(product.warranty_end).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                        ),
+                        0
+                      );
+                      const isExpired = daysRemaining <= 0;
+                      return (
+                        <div
+                          key={product.id}
+                          className="group bg-[#111111] p-5 rounded-xl border border-[#333333] shadow-sm hover:border-[#F2C200] transition-all flex items-center justify-between"
+                        >
+                          <div className="flex items-center space-x-4">
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                              isExpired ? 'bg-red-900/30 text-red-400' : 'bg-[#FFF9E6] text-[#B28900]'
+                            }`}>
+                              <i className={`fas ${isExpired ? 'fa-triangle-exclamation' : 'fa-shield-halved'}`}></i>
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-bold text-white group-hover:text-[#F2C200] transition-colors">
+                                  {product.label}
+                                </h3>
+                              </div>
+                              <p className="text-sm text-gray-400 line-clamp-1">
+                                {product.catalog_product_code
+                                  ? `Catalog: ${productNameByCode.get(product.catalog_product_code) || product.catalog_product_code}`
+                                  : 'Custom product'}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Warranty: {new Date(product.warranty_start).toLocaleDateString()} - {new Date(product.warranty_end).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right hidden sm:block">
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              isExpired ? 'bg-red-900/20 text-red-400' : daysRemaining <= 30 ? 'bg-amber-900/20 text-amber-300' : 'bg-white/10 text-gray-300'
+                            }`}>
+                              {isExpired ? 'Expired' : `${daysRemaining} days left`}
+                            </span>
+                            <p className="text-xs text-gray-500 mt-2">
+                              Purchased {new Date(product.purchase_date).toLocaleDateString()}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-bold text-white group-hover:text-[#F2C200] transition-colors">{job.title}</h3>
-                            {job.isGasAppliance && job.garCode && (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#333333] text-[#F2C200]">GAR: {job.garCode}</span>
+                      );
+                    })}
+                    {myJobs.map(job => (
+                      <Link
+                        key={job.id}
+                        to={`/jobs/${job.id}`}
+                        className="group bg-[#111111] p-5 rounded-xl border border-[#333333] shadow-sm hover:border-[#F2C200] transition-all flex items-center justify-between"
+                      >
+                        <div className="flex items-center space-x-4">
+                          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                            job.status === 'COMPLETED' ? 'bg-green-100 text-green-600' : 'bg-[#FFF9E6] text-[#B28900]'
+                          }`}>
+                            <i className={`fas ${job.status === 'COMPLETED' ? 'fa-check' : 'fa-spinner fa-spin'}`}></i>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-bold text-white group-hover:text-[#F2C200] transition-colors">{job.title}</h3>
+                              {job.isGasAppliance && job.garCode && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#333333] text-[#F2C200]">GAR: {job.garCode}</span>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-400 line-clamp-1">{job.description}</p>
+                            {(job.startDate || job.warrantyEndDate) && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Warranty: {job.startDate ? new Date(job.startDate).toLocaleDateString() : '—'} – {job.warrantyEndDate ? new Date(job.warrantyEndDate).toLocaleDateString() : '—'}
+                              </p>
                             )}
                           </div>
-                          <p className="text-sm text-gray-400 line-clamp-1">{job.description}</p>
-                          {(job.startDate || job.warrantyEndDate) && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              Warranty: {job.startDate ? new Date(job.startDate).toLocaleDateString() : '—'} – {job.warrantyEndDate ? new Date(job.warrantyEndDate).toLocaleDateString() : '—'}
-                            </p>
-                          )}
                         </div>
-                      </div>
-                      <div className="text-right hidden sm:block">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          job.paymentStatus === 'PAID' ? 'bg-white/10 text-gray-300' : 'bg-red-900/20 text-red-400'
-                        }`}>
-                          {job.paymentStatus}
-                        </span>
-                        <p className="text-xs text-gray-500 mt-2">Placed {new Date(job.startDate).toLocaleDateString()}</p>
-                      </div>
-                      <i className="fas fa-chevron-right text-gray-600 group-hover:translate-x-1 transition-transform"></i>
-                    </Link>
-                  ))}
-                </>
-              )}
-            </div>
+                        <div className="text-right hidden sm:block">
+                          <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            job.paymentStatus === 'PAID' ? 'bg-white/10 text-gray-300' : 'bg-red-900/20 text-red-400'
+                          }`}>
+                            {job.paymentStatus}
+                          </span>
+                          <p className="text-xs text-gray-500 mt-2">Placed {new Date(job.startDate).toLocaleDateString()}</p>
+                        </div>
+                        <i className="fas fa-chevron-right text-gray-600 group-hover:translate-x-1 transition-transform"></i>
+                      </Link>
+                    ))}
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="p-5 bg-[#111111] rounded-xl border border-[#F2C20066] text-sm text-gray-300 flex items-center justify-between">
+                <span>
+                  Your products are currently hidden to keep this dashboard clean.
+                </span>
+                <button
+                  type="button"
+                  onClick={toggleMyProductsVisibility}
+                  className="ml-3 px-4 py-2 rounded-lg bg-[#F2C200] text-black font-bold text-xs sm:text-sm hover:brightness-110 transition-all"
+                >
+                  Show Products
+                </button>
+              </div>
+            )}
           </section>
 
           {/* Complaints Section */}

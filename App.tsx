@@ -20,6 +20,7 @@ import AdminComplaints from './views/AdminComplaints';
 import AdminWarrantyClaims from './views/AdminWarrantyClaims';
 import AdminEmployees from './views/AdminEmployees';
 import AdminAddCustomer from './views/AdminAddCustomer';
+import AdminCustomers from './views/AdminCustomers';
 import AdminLeads from './views/AdminLeads';
 import AdminStockRequests from './views/AdminStockRequests';
 import SetPassword from './views/SetPassword';
@@ -119,6 +120,7 @@ const App: React.FC = () => {
                     <Route path="warranty-claims" element={<AdminWarrantyClaims />} />
                     <Route path="quotes" element={<Navigate to="/dashboard" replace />} />
                     <Route path="add-customer" element={<AdminAddCustomer />} />
+                    <Route path="customers" element={<AdminCustomers />} />
                     <Route path="leads" element={<AdminLeads />} />
                     <Route path="stock-requests" element={<AdminStockRequests />} />
                     <Route path="employees" element={<AdminEmployees />} />

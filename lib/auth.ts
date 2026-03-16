@@ -7,6 +7,8 @@ import type { User, UserRole } from '../types';
 
 export interface StoredUser extends User {
   password?: string;
+  accountNumber?: string | null;
+  productsCount?: number;
 }
 
 function mapAuthUserToAppUser(raw: { id: string; email?: string; user_metadata?: Record<string, unknown> }): User | null {
@@ -150,13 +152,21 @@ export async function getAllUsers(): Promise<StoredUser[]> {
   if (!res.ok) return [];
   const json = await res.json().catch(() => ({}));
   const list = json.users || [];
-  return list.map((u: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => ({
+  return list.map((u: {
+    id: string;
+    email?: string;
+    user_metadata?: Record<string, unknown>;
+    account_number?: string | null;
+    products_count?: number;
+  }) => ({
     id: u.id,
     name: (u.user_metadata?.name as string) || u.email || '',
     email: u.email || '',
     role: (u.user_metadata?.role as UserRole) || 'CUSTOMER',
     phone: u.user_metadata?.phone as string | undefined,
     address: u.user_metadata?.address as string | undefined,
+    accountNumber: u.account_number ?? null,
+    productsCount: typeof u.products_count === 'number' ? u.products_count : 0,
   }));
 }
 

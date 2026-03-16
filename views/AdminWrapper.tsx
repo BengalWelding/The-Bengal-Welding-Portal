@@ -9,7 +9,7 @@ const CLEAR_JOBS_FOR_RENEWAL_TEST = false;
 const SEED_RENEWAL_MOCK_DATA = true;
 import { JobStatus, Job } from '../types';
 import { getAllUsers, registerEmployee } from '../lib/auth';
-import { listAllJobsForAdmin } from '../lib/jobs';
+import { listAllJobsForAdmin, deleteJob } from '../lib/jobs';
 import { AdminProvider } from '../contexts/AdminContext';
 import AdminLayout from '../components/AdminLayout';
 import { User } from '../types';
@@ -194,12 +194,16 @@ const AdminWrapper: React.FC<AdminWrapperProps> = ({ user, onLogout }) => {
     setIsJobModalOpen(true);
   };
 
-  const handleDeleteJob = (id: string) => {
-    if (window.confirm('Are you sure you want to remove this service job?')) {
-      const updated = jobs.filter((j) => j.id !== id);
-      setJobs(updated);
-      localStorage.setItem('bengal_jobs', JSON.stringify(updated));
+  const handleDeleteJob = async (id: string) => {
+    if (!window.confirm('Are you sure you want to remove this service job?')) return;
+    try {
+      await deleteJob(id);
+    } catch {
+      // Job may only exist in localStorage (mock/legacy data) – continue with local removal
     }
+    const updated = jobs.filter((j) => j.id !== id);
+    setJobs(updated);
+    localStorage.setItem('bengal_jobs', JSON.stringify(updated));
   };
 
   const handleSaveJob = () => {
