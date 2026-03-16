@@ -261,12 +261,24 @@ const AdminDashboardHome: React.FC = () => {
   const jobsByDate = useMemo(() => {
     const map: Record<string, Job[]> = {};
     for (const job of jobs) {
-      // Scheduled clean date drives the calendar; fall back to last clean or warranty date if missing.
-      const rawDate = job.scheduledCleanDate || job.startDate || job.warrantyEndDate;
-      if (!rawDate) continue;
-      const dateStr = rawDate.length >= 10 ? rawDate.slice(0, 10) : rawDate;
-      if (!map[dateStr]) map[dateStr] = [];
-      map[dateStr].push(job);
+      // Use scheduled clean date or start date as the beginning of the span,
+      // and warrantyEndDate (or start date) as the end, so multi‑day jobs
+      // appear on every day they span in the calendar.
+      const rawStart = job.scheduledCleanDate || job.startDate || job.warrantyEndDate;
+      if (!rawStart) continue;
+      const startStr = rawStart.length >= 10 ? rawStart.slice(0, 10) : rawStart;
+      const rawEnd = job.warrantyEndDate || startStr;
+      const endStr = rawEnd.length >= 10 ? rawEnd.slice(0, 10) : rawEnd;
+      const startDateObj = new Date(startStr + 'T12:00:00');
+      const endDateObj = new Date(endStr + 'T12:00:00');
+      if (Number.isNaN(startDateObj.getTime()) || Number.isNaN(endDateObj.getTime())) continue;
+      const cursor = new Date(startDateObj);
+      while (cursor <= endDateObj) {
+        const dateKey = cursor.toISOString().slice(0, 10);
+        if (!map[dateKey]) map[dateKey] = [];
+        map[dateKey].push(job);
+        cursor.setDate(cursor.getDate() + 1);
+      }
     }
     return map;
   }, [jobs]);
@@ -334,15 +346,15 @@ const AdminDashboardHome: React.FC = () => {
             className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-[#111111] border border-[#333333] text-gray-300 hover:border-[#F2C200] hover:text-white transition-all"
           >
             <i className="fas fa-building-user"></i>
-            <span>Add Site</span>
+            <span>Add Job</span>
           </button>
           <button
             type="button"
             onClick={openAddJobModal}
-            className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-[#111111] border border-[#333333] text-gray-300 hover:border-[#F2C200] hover:text-white transition-all"
+            className="hidden"
+            aria-label="Add Job Hidden"
           >
-            <i className="fas fa-briefcase"></i>
-            <span>Add Job</span>
+            <span>Add Job Hidden</span>
           </button>
           <Link
             to="/dashboard/certificates"
@@ -475,11 +487,24 @@ const AdminDashboardHome: React.FC = () => {
                       >
                         <div className="min-w-0">
                           <p className="text-sm font-bold text-white group-hover:text-[#F2C200] truncate">
-                            {job.title || job.customerName || 'Job'}
+                            {job.customerName || job.title || 'Job'}
                           </p>
                           <p className="text-[10px] text-gray-500 font-bold truncate">
                             {job.customerAddress || job.id}
                           </p>
+                          {job.startDate && job.warrantyEndDate && job.startDate !== job.warrantyEndDate && (
+                            <p className="text-[10px] text-gray-400 font-bold mt-0.5 truncate">
+                              {new Date(job.startDate + 'T12:00:00').toLocaleDateString('en-GB', {
+                                day: 'numeric',
+                                month: 'short',
+                              })}{' '}
+                              —{' '}
+                              {new Date(job.warrantyEndDate + 'T12:00:00').toLocaleDateString('en-GB', {
+                                day: 'numeric',
+                                month: 'short',
+                              })}
+                            </p>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-1 shrink-0">
                           <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-white/5 text-gray-300">
@@ -551,9 +576,9 @@ const AdminDashboardHome: React.FC = () => {
                             key={job.id}
                             to={`/jobs/${job.id}`}
                             className="block px-2 py-1 rounded bg-[#111111] border border-[#333333] hover:border-[#F2C200] text-[10px] font-bold text-white truncate"
-                            title={job.title || job.customerName || job.id}
+                            title={job.customerName || job.title || job.id}
                           >
-                            {job.title || job.customerName || 'Job'}
+                            {job.customerName || job.title || 'Job'}
                           </Link>
                         ))}
                         {dayJobs.length > 5 && (
@@ -677,7 +702,7 @@ const AdminDashboardHome: React.FC = () => {
                       >
                         <div className="min-w-0">
                           <p className="text-sm font-bold text-white group-hover:text-[#F2C200] truncate">
-                            {job.title || job.customerName || 'Job'}
+                            {job.customerName || job.title || 'Job'}
                           </p>
                           <p className="text-[10px] text-gray-500 font-bold truncate">
                             {job.customerAddress || job.id}

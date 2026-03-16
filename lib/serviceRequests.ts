@@ -121,3 +121,33 @@ export async function rejectServiceRequest(
 
   if (error) throw new Error(error.message || 'Failed to reject request');
 }
+
+export async function deleteServiceRequest(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('service_requests')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new Error(error.message || 'Failed to delete request');
+}
+
+export async function deleteAllServiceRequests(): Promise<void> {
+  // Supabase/PostgREST requires a filter on DELETE, so we:
+  // 1) Fetch all IDs
+  // 2) Delete by ID list
+  const { data, error } = await supabase
+    .from('service_requests')
+    .select('id');
+
+  if (error) throw new Error(error.message || 'Failed to load service requests for delete');
+
+  const ids = (data || []).map((r) => (r as { id: string }).id);
+  if (!ids.length) return;
+
+  const { error: deleteError } = await supabase
+    .from('service_requests')
+    .delete()
+    .in('id', ids);
+
+  if (deleteError) throw new Error(deleteError.message || 'Failed to delete all requests');
+}

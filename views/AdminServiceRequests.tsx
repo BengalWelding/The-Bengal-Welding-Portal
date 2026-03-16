@@ -3,6 +3,8 @@ import {
   listServiceRequestsForAdmin,
   approveServiceRequest,
   rejectServiceRequest,
+  deleteServiceRequest,
+  deleteAllServiceRequests,
   type ServiceRequestRow,
   type ServiceRequestStatus,
   type PaymentType,
@@ -24,6 +26,9 @@ const AdminServiceRequests: React.FC = () => {
   const [ddDisplay, setDdDisplay] = useState<string>('50.00');
   const [ddDayOfMonth, setDdDayOfMonth] = useState<number>(15);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
 
   const parseDisplayToPence = (s: string): number => {
     const n = parseFloat(String(s).trim().replace(/,/g, ''));
@@ -143,6 +148,34 @@ const AdminServiceRequests: React.FC = () => {
     );
   };
 
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Delete this service request permanently? This cannot be undone.')) return;
+    setDeletingId(id);
+    setError(null);
+    try {
+      await deleteServiceRequest(id);
+      await fetch();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete request');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    setBulkDeleting(true);
+    setError(null);
+    try {
+      await deleteAllServiceRequests();
+      await fetch();
+      setDeleteAllConfirmOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete all requests');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const card = (req: ServiceRequestRow, showActions = false) => (
     <div
       key={req.id}
@@ -166,13 +199,23 @@ const AdminServiceRequests: React.FC = () => {
       {req.admin_notes && (
         <p className="text-xs text-gray-500 mt-2 italic">Admin notes: {req.admin_notes}</p>
       )}
-      <button
-        onClick={() => setDetailsOpen(req)}
-        className="mt-3 w-full px-3 py-2 rounded-lg border border-[#333333] text-gray-400 text-sm font-bold hover:bg-white/5 hover:text-white transition-colors"
-      >
-        <i className="fas fa-eye mr-2" />
-        View full details
-      </button>
+      <div className="mt-3 flex flex-col gap-2">
+        <button
+          onClick={() => setDetailsOpen(req)}
+          className="w-full px-3 py-2 rounded-lg border border-[#333333] text-gray-400 text-sm font-bold hover:bg-white/5 hover:text-white transition-colors"
+        >
+          <i className="fas fa-eye mr-2" />
+          View full details
+        </button>
+        <button
+          onClick={() => handleDelete(req.id)}
+          disabled={deletingId === req.id}
+          className="w-full px-3 py-2 rounded-lg border border-red-800/60 bg-red-900/20 text-red-300 text-xs font-bold hover:bg-red-900/40 hover:text-red-100 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          <i className="fas fa-trash" />
+          {deletingId === req.id ? 'Deleting...' : 'Delete request'}
+        </button>
+      </div>
       {showActions && req.status === 'pending' && (
         <div className="flex gap-2 mt-3">
           <button
@@ -194,7 +237,19 @@ const AdminServiceRequests: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-      <h1 className="text-2xl font-black text-[#F2C200] tracking-tight">Service Requests</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-black text-[#F2C200] tracking-tight">Service Requests</h1>
+        {requests.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setDeleteAllConfirmOpen(true)}
+            className="px-4 py-2 rounded-xl border border-red-800/60 bg-red-900/20 text-red-300 text-xs font-bold hover:bg-red-900/40 hover:text-red-100 flex items-center gap-2"
+          >
+            <i className="fas fa-trash-can" />
+            Delete all
+          </button>
+        )}
+      </div>
 
       {error && (
         <div className="p-4 rounded-xl bg-red-900/20 border border-red-800/50 text-red-300 text-sm">
@@ -486,6 +541,47 @@ const AdminServiceRequests: React.FC = () => {
                 }`}
               >
                 {submitting ? 'Processing...' : action === 'approve' ? 'Approve' : 'Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete all confirmation */}
+      {deleteAllConfirmOpen && (
+        <div className="fixed inset-0 z-[650] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#111111] border border-red-800/60 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="p-4 bg-red-900/40">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <i className="fas fa-triangle-exclamation text-red-300" />
+                Delete all service requests
+              </h3>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-sm text-gray-300">
+                This will permanently delete all service requests from the system. This action cannot be undone.
+              </p>
+              <p className="text-xs text-gray-500">
+                If you just want to clear a few, use the delete button on each card instead.
+              </p>
+            </div>
+            <div className="p-4 flex gap-3 border-t border-[#333333]">
+              <button
+                type="button"
+                onClick={() => setDeleteAllConfirmOpen(false)}
+                disabled={bulkDeleting}
+                className="flex-1 py-2 rounded-xl border border-[#333333] text-gray-400 font-bold hover:bg-white/5 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAll}
+                disabled={bulkDeleting}
+                className="flex-1 py-2 rounded-xl font-bold bg-red-600/80 hover:bg-red-500/80 text-white disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                <i className="fas fa-trash-can" />
+                {bulkDeleting ? 'Deleting...' : 'Delete all'}
               </button>
             </div>
           </div>

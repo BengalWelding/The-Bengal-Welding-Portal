@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { createSiteSurvey, updateSiteSurvey, getSiteSurvey } from '../lib/siteSurveys';
 import { uploadSiteSurveyMedia, getSignedUrl, type MediaItem } from '../lib/storage';
+import { useAdmin } from '../contexts/AdminContext';
 
 const SURVEY_TYPE_OPTIONS = [
   'TR19 Grease',
@@ -21,6 +22,8 @@ const AdminSiteSurveyForm: React.FC = () => {
 
   const isEdit = !!editId;
   const surveyId = useMemo(() => editId ?? crypto.randomUUID(), [editId]);
+
+  const { jobs } = useAdmin();
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingForm, setLoadingForm] = useState(isEdit);
@@ -47,6 +50,7 @@ const AdminSiteSurveyForm: React.FC = () => {
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [internalNotes, setInternalNotes] = useState('');
   const [priority, setPriority] = useState('normal');
+  const [linkedJobId, setLinkedJobId] = useState<string>('');
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -85,6 +89,7 @@ const AdminSiteSurveyForm: React.FC = () => {
         setMedia(s.media ?? []);
         setInternalNotes(s.internal_notes ?? '');
         setPriority(s.priority ?? 'normal');
+        setLinkedJobId(s.job_id ?? '');
       })
       .catch(() => setLoadError('Failed to load survey'))
       .finally(() => setLoadingForm(false));
@@ -207,6 +212,7 @@ const AdminSiteSurveyForm: React.FC = () => {
         media,
         internal_notes: internalNotes.trim() || null,
         priority: priority || null,
+        job_id: linkedJobId || null,
         status,
       };
 
@@ -388,6 +394,30 @@ const AdminSiteSurveyForm: React.FC = () => {
               placeholder="Optional"
             />
           </div>
+        </div>
+      </div>
+
+      {/* LINKED JOB FOR CERTIFICATES */}
+      <div className={sectionCls}>
+        <h2 className={sectionTitleCls}>Linked Job (for TR19 PCVR & Certificates)</h2>
+        <p className="text-xs text-gray-500 mb-2">
+          Optionally link this site to an existing job. Once the TR19 PCVR is completed for that job, you can generate a
+          certificate directly from the TR19 sites list.
+        </p>
+        <div>
+          <label className={labelCls}>Linked Job</label>
+          <select
+            className={inputCls}
+            value={linkedJobId}
+            onChange={(e) => setLinkedJobId(e.target.value)}
+          >
+            <option value="">Not linked</option>
+            {jobs.map((j) => (
+              <option key={j.id} value={j.id}>
+                {j.customerName || j.title} — {j.id}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

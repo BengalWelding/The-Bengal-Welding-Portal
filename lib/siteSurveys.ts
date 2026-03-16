@@ -29,6 +29,8 @@ export interface SiteSurvey {
   media: MediaItem[];
   internal_notes: string | null;
   priority: string | null;
+  /** Optional link back to a job used for TR19 PCVR + certificates */
+  job_id: string | null;
   surveyed_by_id: string | null;
   surveyed_by_name: string | null;
   status: 'draft' | 'submitted';
@@ -59,6 +61,7 @@ export interface SiteSurveyInsert {
   media?: MediaItem[];
   internal_notes?: string | null;
   priority?: string | null;
+  job_id?: string | null;
   surveyed_by_id?: string | null;
   surveyed_by_name?: string | null;
   status?: 'draft' | 'submitted';

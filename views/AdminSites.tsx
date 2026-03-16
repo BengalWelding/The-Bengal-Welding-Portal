@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useAdmin } from '../contexts/AdminContext';
+import type { Job } from '../types';
 import { useLocation } from 'react-router-dom';
 import {
   listInstallationSites,
@@ -14,6 +16,7 @@ const MAX_MEDIA_FILES = 10;
 const MAX_FILE_MB = 10;
 
 const AdminSites: React.FC = () => {
+  const { jobs, setJobs } = useAdmin();
   const location = useLocation();
   const [sites, setSites] = useState<InstallationSite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +41,33 @@ const AdminSites: React.FC = () => {
   const [mediaPreview, setMediaPreview] = useState<
     { type: 'image' | 'video'; url: string; name?: string } | null
   >(null);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduleSite, setScheduleSite] = useState<InstallationSite | null>(null);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [startTime, setStartTime] = useState('08:00');
+  const [duration, setDuration] = useState(2);
+  const [jobType, setJobType] = useState('TR19 Grease Clean (Kitchen Extract)');
+  const [contractValueInput, setContractValueInput] = useState('1200');
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [calendarView, setCalendarView] = useState(() => {
+    const t = new Date();
+    return { year: t.getFullYear(), month: t.getMonth() };
+  });
+  const [activeDateField, setActiveDateField] = useState<'start' | 'end' | null>(null);
+
+  const JOB_TYPES = [
+    'TR19 Grease Clean (Kitchen Extract)',
+    'Ductwork Inspection & Report',
+    'Fire Safety Compliance Check',
+    'Full Kitchen Extract Deep Clean',
+  ];
+
+  const START_TIMES = Array.from({ length: 48 }, (_, i) => {
+    const h = Math.floor(i / 2);
+    const m = (i % 2) * 30;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  });
 
   const loadSites = () => {
     setLoading(true);
@@ -70,6 +100,21 @@ const AdminSites: React.FC = () => {
     (s.notes || '').toLowerCase().includes(searchQuery.toLowerCase());
 
   const filteredSites = sites.filter(matchesSearch);
+
+  const siteScheduleMap = useMemo(() => {
+    const map: Record<string, { startDate: string; endDate: string }> = {};
+    for (const job of jobs) {
+      if (!job.customerId || !job.startDate) continue;
+      const siteId = job.customerId;
+      const start = job.startDate.slice(0, 10);
+      const end = (job.warrantyEndDate || job.startDate).slice(0, 10);
+      const existing = map[siteId];
+      if (!existing || start > existing.startDate) {
+        map[siteId] = { startDate: start, endDate: end };
+      }
+    }
+    return map;
+  }, [jobs]);
 
   const openAdd = () => {
     setEditingSite(null);
@@ -229,6 +274,70 @@ const AdminSites: React.FC = () => {
     'w-full px-4 py-2.5 bg-[#111111] border border-[#333333] rounded-lg text-white text-sm focus:outline-none focus:border-[#F2C200] focus:ring-1 focus:ring-[#F2C200]/30';
   const labelClass = 'block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5';
 
+  const openScheduleForSite = (site: InstallationSite) => {
+    setScheduleSite(site);
+    setStartDate('');
+    setEndDate('');
+    setStartTime('08:00');
+    setDuration(2);
+    setJobType('TR19 Grease Clean (Kitchen Extract)');
+    setContractValueInput('1200');
+    setScheduleError(null);
+    setScheduleModalOpen(true);
+  };
+
+  const createJobsForRange = () => {
+    if (!scheduleSite) return;
+    if (!startDate || !endDate) {
+      setScheduleError('Please choose both a start date and an end date.');
+      return;
+    }
+    const newValue = parseFloat(contractValueInput) || 0;
+    if (newValue < 0) {
+      setScheduleError('Contract value cannot be negative.');
+      return;
+    }
+    const start = new Date(startDate + 'T12:00:00');
+    const end = new Date(endDate + 'T12:00:00');
+    if (end < start) {
+      setScheduleError('End date must be on or after the start date.');
+      return;
+    }
+    const startStr = start.toISOString().slice(0, 10);
+    const endStr = end.toISOString().slice(0, 10);
+
+    setJobs((prev) => {
+      const updated: Job[] = [...prev];
+      const id = `${scheduleSite.id}-${startStr}-${endStr}-${Math.random().toString(36).slice(2, 8)}`;
+      const job: Job = {
+        id,
+        title: `${scheduleSite.site_name} — ${jobType}`,
+        description: jobType,
+        customerId: scheduleSite.id,
+        customerName: scheduleSite.site_name,
+        customerAddress: scheduleSite.address,
+        customerPostcode: scheduleSite.postcode,
+        contactName: scheduleSite.contact_name,
+        status: 'PENDING',
+        startDate: startStr,
+        warrantyEndDate: endStr,
+        scheduledCleanDate: startStr,
+        paymentStatus: 'UNPAID',
+        amount: newValue,
+        startTime,
+        duration,
+        jobType,
+        leadOperative: 'ZAKEE — zakee.hussain@outlook.com',
+      };
+      updated.unshift(job);
+      localStorage.setItem('bengal_jobs', JSON.stringify(updated));
+      return updated;
+    });
+    setScheduleModalOpen(false);
+    setScheduleSite(null);
+    setScheduleError(null);
+  };
+
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col gap-4">
@@ -279,6 +388,26 @@ const AdminSites: React.FC = () => {
                     <div>
                       <p className="font-bold text-white">{s.site_name}</p>
                       <p className="text-[10px] text-gray-600 mt-0.5">{s.postcode}</p>
+                      {siteScheduleMap[s.id] && (
+                        <p className="text-[10px] text-gray-400 font-bold mt-1">
+                          Next job:{' '}
+                          {new Date(siteScheduleMap[s.id].startDate + 'T12:00:00').toLocaleDateString('en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                          })}
+                          {siteScheduleMap[s.id].endDate &&
+                            siteScheduleMap[s.id].endDate !== siteScheduleMap[s.id].startDate && (
+                              <>
+                                {' '}
+                                —{' '}
+                                {new Date(siteScheduleMap[s.id].endDate + 'T12:00:00').toLocaleDateString('en-GB', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                })}
+                              </>
+                            )}
+                        </p>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -308,6 +437,12 @@ const AdminSites: React.FC = () => {
                           <span>Media ({s.media.length})</span>
                         </button>
                       )}
+                      <button
+                        onClick={() => openScheduleForSite(s)}
+                        className="px-3 py-1.5 rounded-full text-xs font-bold bg-[#F2C200] text-black hover:brightness-110 active:scale-95 transition-all"
+                      >
+                        Schedule dates
+                      </button>
                       <button
                         onClick={() => openEdit(s)}
                         className="text-gray-500 hover:text-[#F2C200] transition-colors"
@@ -514,6 +649,252 @@ const AdminSites: React.FC = () => {
                     <span>{editingSite ? 'Update Site' : 'Add Site'}</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Dates Modal */}
+      {scheduleModalOpen && scheduleSite && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[650] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#111111] border border-[#333333] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl my-8">
+            <div className="p-6 border-b border-[#333333] flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white">Schedule dates</h2>
+                <p className="text-sm text-gray-500 font-bold mt-0.5">
+                  {scheduleSite.site_name} — {scheduleSite.address}
+                </p>
+              </div>
+              <button
+                onClick={() => setScheduleModalOpen(false)}
+                className="text-gray-400 hover:text-white p-1 transition-colors"
+              >
+                <i className="fas fa-times text-xl"></i>
+              </button>
+            </div>
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              {scheduleError && (
+                <div className="px-4 py-2 rounded-lg bg-red-900/30 border border-red-800/50 text-red-400 text-xs font-bold">
+                  {scheduleError}
+                </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Start date *</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveDateField('start');
+                      const base = startDate ? new Date(startDate + 'T12:00:00') : new Date();
+                      setCalendarView({ year: base.getFullYear(), month: base.getMonth() });
+                    }}
+                    className={`${inputClass} text-left flex items-center justify-between`}
+                  >
+                    <span>
+                      {startDate
+                        ? new Date(startDate + 'T12:00:00').toLocaleDateString('en-GB', {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : 'Select start date'}
+                    </span>
+                    <i className="fas fa-calendar-alt text-gray-400 ml-3" />
+                  </button>
+                </div>
+                <div>
+                  <label className={labelClass}>End date *</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveDateField('end');
+                      const base = endDate ? new Date(endDate + 'T12:00:00') : new Date();
+                      setCalendarView({ year: base.getFullYear(), month: base.getMonth() });
+                    }}
+                    className={`${inputClass} text-left flex items-center justify-between`}
+                  >
+                    <span>
+                      {endDate
+                        ? new Date(endDate + 'T12:00:00').toLocaleDateString('en-GB', {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : 'Select end date'}
+                    </span>
+                    <i className="fas fa-calendar-alt text-gray-400 ml-3" />
+                  </button>
+                </div>
+              </div>
+              {activeDateField && (
+                <div className="bg-black border border-[#333333] rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCalendarView((v) =>
+                          v.month === 0 ? { year: v.year - 1, month: 11 } : { year: v.year, month: v.month - 1 }
+                        )
+                      }
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-[#333333] hover:text-white transition-colors"
+                    >
+                      <i className="fas fa-chevron-left text-xs"></i>
+                    </button>
+                    <span className="text-sm font-bold text-white">
+                      {new Date(calendarView.year, calendarView.month).toLocaleString('default', {
+                        month: 'long',
+                        year: 'numeric',
+                      })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCalendarView((v) =>
+                          v.month === 11 ? { year: v.year + 1, month: 0 } : { year: v.year, month: v.month + 1 }
+                        )
+                      }
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-[#333333] hover:text-white transition-colors"
+                    >
+                      <i className="fas fa-chevron-right text-xs"></i>
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-7 gap-0.5 text-center">
+                    {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+                      <div key={d} className="text-[9px] font-black text-gray-500 py-1">
+                        {d}
+                      </div>
+                    ))}
+                    {(() => {
+                      const firstDay = new Date(calendarView.year, calendarView.month, 1).getDay();
+                      const daysInMonth = new Date(calendarView.year, calendarView.month + 1, 0).getDate();
+                      const padding = Array.from({ length: firstDay }, (_, i) => (
+                        <div key={`p-${i}`} className="py-1.5" />
+                      ));
+                      const days = Array.from({ length: daysInMonth }, (_, i) => {
+                        const day = i + 1;
+                        const dateStr = `${calendarView.year}-${String(calendarView.month + 1).padStart(2, '0')}-${String(
+                          day
+                        ).padStart(2, '0')}`;
+                        const isSelected =
+                          (activeDateField === 'start' && startDate === dateStr) ||
+                          (activeDateField === 'end' && endDate === dateStr);
+                        const isToday = dateStr === new Date().toISOString().split('T')[0];
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => {
+                              if (activeDateField === 'start') {
+                                setStartDate(dateStr);
+                              } else {
+                                setEndDate(dateStr);
+                              }
+                              setScheduleError(null);
+                            }}
+                            className={`py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                              isSelected
+                                ? 'bg-[#F2C200] text-black'
+                                : isToday
+                                  ? 'bg-[#333333] text-[#F2C200]'
+                                  : 'text-gray-300 hover:bg-[#333333] hover:text-white'
+                            }`}
+                          >
+                            {day}
+                          </button>
+                        );
+                      });
+                      return [...padding, ...days];
+                    })()}
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Start time *</label>
+                  <select
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className={inputClass}
+                  >
+                    {START_TIMES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Duration *</label>
+                  <select
+                    value={duration}
+                    onChange={(e) => setDuration(Number(e.target.value))}
+                    className={inputClass}
+                  >
+                    <option value={1}>1 hour</option>
+                    <option value={2}>2 hours</option>
+                    <option value={3}>3 hours</option>
+                    <option value={4}>4 hours</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className={labelClass}>Job type *</label>
+                <select
+                  value={jobType}
+                  onChange={(e) => setJobType(e.target.value)}
+                  className={inputClass}
+                >
+                  {JOB_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Contract value (£)</label>
+                <input
+                  type="number"
+                  value={contractValueInput}
+                  onChange={(e) => setContractValueInput(e.target.value)}
+                  min={0}
+                  step={0.01}
+                  className={inputClass}
+                />
+              </div>
+              {startDate && endDate && (
+                <p className="text-[11px] text-gray-400 font-bold">
+                  This will create{' '}
+                  <span className="text-[#F2C200]">
+                    {(() => {
+                      const start = new Date(startDate + 'T12:00:00');
+                      const end = new Date(endDate + 'T12:00:00');
+                      if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return 0;
+                      const diffMs = end.getTime() - start.getTime();
+                      const days = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+                      return days;
+                    })()}
+                  </span>{' '}
+                  day job spanning this range.
+                </p>
+              )}
+            </div>
+            <div className="p-6 border-t border-[#333333] flex items-center justify-end gap-3">
+              <button
+                onClick={() => setScheduleModalOpen(false)}
+                className="px-5 py-2.5 rounded-lg font-bold text-sm bg-transparent border border-[#333333] text-gray-300 hover:border-[#F2C200] hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={createJobsForRange}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-sm bg-[#F2C200] text-black hover:brightness-110 disabled:opacity-60 transition-colors shadow-lg shadow-[#F2C2001A]"
+              >
+                <i className="fas fa-calendar-plus text-sm"></i>
+                <span>Add to calendar</span>
               </button>
             </div>
           </div>

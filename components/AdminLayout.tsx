@@ -19,8 +19,10 @@ const SIDEBAR_ITEMS = [
   { path: '/dashboard/jobs', label: 'Jobs', icon: 'fa-briefcase' },
   { path: '/dashboard/sites', label: 'Sites', icon: 'fa-building' },
   { path: '/dashboard/service-requests', label: 'Service Requests', icon: 'fa-clipboard-check' },
-  { path: '/dashboard/certificates', label: 'TR19 Certificates', icon: 'fa-certificate' },
-  { path: '/dashboard/report-log', label: 'TR19 PCVR', icon: 'fa-list' },
+  // TR19 Certificates sidebar button hidden (route still available)
+  // { path: '/dashboard/certificates', label: 'TR19 Certificates', icon: 'fa-certificate' },
+  // TR19 PCVR sidebar button hidden (route still available)
+  // { path: '/dashboard/report-log', label: 'TR19 PCVR', icon: 'fa-list' },
   { path: '/dashboard/tr19', label: 'TR19', icon: 'fa-clipboard-list' },
   { path: '/dashboard/complaints', label: 'Complaints', icon: 'fa-triangle-exclamation' },
   { path: '/dashboard/warranty-claims', label: 'Warranty Claims', icon: 'fa-file-contract' },

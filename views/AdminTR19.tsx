@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { listSiteSurveys, deleteSiteSurvey } from '../lib/siteSurveys';
 import type { SiteSurvey } from '../lib/siteSurveys';
+import { useAdmin } from '../contexts/AdminContext';
+import { TR19_REPORTS_STORAGE_KEY } from './TR19ReportForm';
 
 const AdminTR19: React.FC = () => {
   const [siteSurveys, setSiteSurveys] = useState<SiteSurvey[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
+  const { jobs } = useAdmin();
 
   const loadSurveys = () => {
     setLoading(true);
@@ -37,6 +41,32 @@ const AdminTR19: React.FC = () => {
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to delete');
     }
+  };
+
+  const handleGenerateCertificate = (s: SiteSurvey) => {
+    if (!s.job_id) {
+      alert('Link this TR19 site to a job first (edit the site and choose a Linked Job).');
+      return;
+    }
+    const job = jobs.find((j) => j.id === s.job_id);
+    if (!job) {
+      alert('Linked job not found. Please check the Linked Job on this TR19 site.');
+      return;
+    }
+    let reports: Record<string, unknown> = {};
+    try {
+      const raw = localStorage.getItem(TR19_REPORTS_STORAGE_KEY);
+      reports = raw ? JSON.parse(raw) : {};
+    } catch {
+      reports = {};
+    }
+    if (!reports[job.id]) {
+      if (window.confirm('Complete the TR19 PCVR for this job before generating a certificate. Go to the PCVR form now?')) {
+        navigate(`/dashboard/jobs/${job.id}/tr19-report`);
+      }
+      return;
+    }
+    navigate('/dashboard/certificates', { state: { viewReportJobId: job.id } });
   };
 
   return (
@@ -139,6 +169,15 @@ const AdminTR19: React.FC = () => {
                     >
                       <i className="fas fa-pencil-alt"></i> Edit
                     </Link>
+                    {s.status === 'submitted' && (
+                      <button
+                        onClick={() => handleGenerateCertificate(s)}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-green-900/40 text-green-400 border border-green-800/50 hover:bg-green-800/40 transition-all"
+                      >
+                        <i className="fas fa-certificate"></i>
+                        Generate Certificate
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDelete(s)}
                       className="text-red-500 hover:text-red-400 text-xs font-bold flex items-center gap-1"

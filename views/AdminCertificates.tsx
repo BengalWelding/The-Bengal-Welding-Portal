@@ -5,6 +5,10 @@ import html2pdf from 'html2pdf.js';
 import { useAdmin } from '../contexts/AdminContext';
 import { Job } from '../types';
 import { TR19_REPORTS_STORAGE_KEY, type TR19Report } from './TR19ReportForm';
+import {
+  listInstallationSites,
+  type InstallationSite,
+} from '../lib/installationSites';
 
 const SERVICE_TYPES = ['Full Duct Clean', 'Partial Duct Clean', 'Filter Replacement', 'Grease Trap Clean', 'Inspection'];
 const GREASE_RATINGS = ['Grade 1 - Heavy', 'Grade 2 - Light', 'Grade 3 - Trace', 'Grade 4 - Clean'];
@@ -52,6 +56,7 @@ const AdminCertificates: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const now = new Date();
+  const [sites, setSites] = useState<InstallationSite[]>([]);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [editForm, setEditForm] = useState<EditCertificateForm | null>(null);
   const [certificateView, setCertificateView] = useState<EditCertificateForm | null>(null);
@@ -73,7 +78,17 @@ const AdminCertificates: React.FC = () => {
     }
   }, [location.state, jobs, navigate, location.pathname]);
 
-  const uniqueSites = Array.from(new Set(jobs.map((j) => j.customerName).filter(Boolean))) as string[];
+  useEffect(() => {
+    listInstallationSites()
+      .then(setSites)
+      .catch(() => setSites([]));
+  }, []);
+
+  const uniqueSites = useMemo(() => {
+    const fromJobs = jobs.map((j) => j.customerName).filter(Boolean) as string[];
+    const fromSites = sites.map((s) => s.site_name).filter(Boolean);
+    return Array.from(new Set([...fromJobs, ...fromSites]));
+  }, [jobs, sites]);
 
   const matchesSearch = (text?: string) =>
     !searchQuery || (text || '').toLowerCase().includes(searchQuery.toLowerCase());
@@ -178,13 +193,16 @@ const AdminCertificates: React.FC = () => {
   const handleSiteSelect = (siteName: string) => {
     if (!newCertificateForm) return;
     const matchingJob = jobs.find((j) => j.customerName === siteName);
+    const matchingSite = sites.find((s) => s.site_name === siteName);
     setNewCertificateForm({
       ...newCertificateForm,
       siteName,
       siteAddress: matchingJob
         ? [matchingJob.customerAddress, matchingJob.customerPostcode].filter(Boolean).join(', ')
-        : '',
-      clientEmail: matchingJob?.customerEmail || '',
+        : matchingSite
+          ? [matchingSite.address, matchingSite.postcode].filter(Boolean).join(', ')
+          : '',
+      clientEmail: matchingJob?.customerEmail || matchingSite?.contact_email || '',
     });
   };
 

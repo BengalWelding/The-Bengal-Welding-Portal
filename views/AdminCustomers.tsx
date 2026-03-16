@@ -59,7 +59,25 @@ const AdminCustomers: React.FC = () => {
     setError(null);
     try {
       const users = await getAllUsers();
-      setCustomers(users.filter((u) => u.role === 'CUSTOMER'));
+      let customerUsers = users.filter((u) => u.role === 'CUSTOMER');
+
+      // Ensure productsCount reflects the actual number of products per customer.
+      // This does not rely on the edge function including an accurate products_count field.
+      try {
+        const allProducts = await listCustomerProductsForAdmin();
+        const counts = new Map<string, number>();
+        allProducts.forEach((p) => {
+          counts.set(p.customer_id, (counts.get(p.customer_id) || 0) + 1);
+        });
+        customerUsers = customerUsers.map((c) => ({
+          ...c,
+          productsCount: counts.get(c.id) ?? c.productsCount ?? 0,
+        }));
+      } catch {
+        // If product listing fails (e.g. Supabase not configured), fall back to any productsCount coming from getAllUsers.
+      }
+
+      setCustomers(customerUsers);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load customers.');
     } finally {

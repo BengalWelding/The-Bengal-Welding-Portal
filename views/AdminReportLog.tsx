@@ -105,7 +105,7 @@ const AdminReportLog: React.FC = () => {
                       onClick={() => viewReport(entry.jobId)}
                       className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-green-900/40 text-green-400 border border-green-800/50 hover:bg-green-800/40 transition-all"
                     >
-                      View
+                      Generate Certificate
                     </button>
                     <button
                       onClick={() => editReport(entry.jobId)}

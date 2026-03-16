@@ -10,7 +10,7 @@ import AdminDashboardHome from './views/AdminDashboardHome';
 import AdminJobs from './views/AdminJobs';
 import AdminSites from './views/AdminSites';
 import AdminCertificates from './views/AdminCertificates';
-import AdminTR19 from './views/AdminTR19';
+import AdminTR19Hub from './views/AdminTR19Hub';
 import AdminSurveyForm from './views/AdminSurveyForm';
 import AdminSiteSurveyForm from './views/AdminSiteSurveyForm';
 import AdminTR19ReportForm from './views/TR19ReportForm';
@@ -109,7 +109,7 @@ const App: React.FC = () => {
                     <Route path="jobs" element={<AdminJobs />} />
                     <Route path="sites" element={<AdminSites />} />
                     <Route path="certificates" element={<AdminCertificates />} />
-                    <Route path="tr19" element={<AdminTR19 />} />
+                    <Route path="tr19" element={<AdminTR19Hub />} />
                     <Route path="tr19/add" element={<AdminSiteSurveyForm />} />
                     <Route path="tr19/edit/:id" element={<AdminSiteSurveyForm />} />
                     <Route path="surveys" element={<Navigate to="/dashboard/tr19" replace />} />
