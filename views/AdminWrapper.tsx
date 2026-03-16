@@ -1,12 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MOCK_JOBS } from '../mockData';
-
-// Set to true to clear all jobs (Renewal Dashboard blank for testing), then set back to false
-const CLEAR_JOBS_FOR_RENEWAL_TEST = false;
-// Set to true once to seed Renewal Dashboard with mock data, then set back to false
-const SEED_RENEWAL_MOCK_DATA = true;
 import { JobStatus, Job } from '../types';
 import { getAllUsers, registerEmployee } from '../lib/auth';
 import { listAllJobsForAdmin, deleteJob } from '../lib/jobs';
@@ -67,32 +61,24 @@ const AdminWrapper: React.FC<AdminWrapperProps> = ({ user, onLogout }) => {
   const [viewMode, setViewMode] = useState<'LIST' | 'CALENDAR'>('LIST');
 
   useEffect(() => {
-    const REMOVED_JOB_IDS = ['r1', 'r2']; // Nandos Liverpool, The Crown Hotel
+    const REMOVED_JOB_IDS = ['r1', 'r2']; // legacy mock jobs to permanently hide if present
     const withoutRemoved = (arr: Job[]) => arr.filter((j) => !REMOVED_JOB_IDS.includes(j.id));
 
-    if (CLEAR_JOBS_FOR_RENEWAL_TEST) {
-      localStorage.setItem('bengal_jobs', '[]');
+    const savedJobs = localStorage.getItem('bengal_jobs');
+    if (!savedJobs) {
       setJobs([]);
       return;
     }
-    const savedJobs = localStorage.getItem('bengal_jobs');
-    const raw = savedJobs ? JSON.parse(savedJobs) : [];
-    const filtered = withoutRemoved(raw);
-    if (SEED_RENEWAL_MOCK_DATA && filtered.length === 0) {
-      const seed = withoutRemoved(MOCK_JOBS);
-      localStorage.setItem('bengal_jobs', JSON.stringify(seed));
-      setJobs(seed);
-      return;
-    }
-    if (savedJobs && filtered.length > 0) {
+    try {
+      const raw = JSON.parse(savedJobs) as Job[];
+      const filtered = withoutRemoved(raw);
       setJobs(filtered);
       if (filtered.length !== raw.length) {
         localStorage.setItem('bengal_jobs', JSON.stringify(filtered));
       }
-    } else {
-      const seed = withoutRemoved(MOCK_JOBS);
-      setJobs(seed);
-      localStorage.setItem('bengal_jobs', JSON.stringify(seed));
+    } catch {
+      setJobs([]);
+      localStorage.removeItem('bengal_jobs');
     }
   }, []);
 
