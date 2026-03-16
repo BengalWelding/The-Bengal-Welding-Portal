@@ -39,6 +39,7 @@ const AdminWrapper: React.FC<AdminWrapperProps> = ({ user, onLogout }) => {
     amount: 0,
     startDate: new Date().toISOString().split('T')[0],
     warrantyEndDate: new Date().toISOString().split('T')[0],
+    scheduledCleanDate: new Date().toISOString().split('T')[0],
     status: 'PENDING',
     paymentStatus: 'UNPAID',
     customerId: '',
@@ -145,6 +146,7 @@ const AdminWrapper: React.FC<AdminWrapperProps> = ({ user, onLogout }) => {
       amount: 0,
       startDate: new Date().toISOString().split('T')[0],
       warrantyEndDate: new Date().toISOString().split('T')[0],
+      scheduledCleanDate: new Date().toISOString().split('T')[0],
       status: 'PENDING',
       paymentStatus: 'UNPAID',
       customerId: '',
@@ -830,6 +832,22 @@ function JobModal({
               <i className="fas fa-calendar-alt text-gray-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
             </div>
             <p className="text-[10px] text-gray-500 mt-1">Click to pick a date from the calendar</p>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Scheduled Clean Date</label>
+            <div className="relative">
+              <input
+                type="date"
+                value={jobForm.scheduledCleanDate || ''}
+                onChange={(e) => setJobForm({ ...jobForm, scheduledCleanDate: e.target.value })}
+                className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none pr-10 [color-scheme:dark]"
+                title="Date this clean is scheduled to take place"
+              />
+              <i className="fas fa-calendar-alt text-gray-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+            </div>
+            <p className="text-[10px] text-gray-500 mt-1">
+              This date is used for the Job Calendar schedule.
+            </p>
           </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Frequency</label>

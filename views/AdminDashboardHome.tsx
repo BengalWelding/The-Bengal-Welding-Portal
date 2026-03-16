@@ -261,7 +261,8 @@ const AdminDashboardHome: React.FC = () => {
   const jobsByDate = useMemo(() => {
     const map: Record<string, Job[]> = {};
     for (const job of jobs) {
-      const rawDate = job.startDate || job.warrantyEndDate;
+      // Scheduled clean date drives the calendar; fall back to last clean or warranty date if missing.
+      const rawDate = job.scheduledCleanDate || job.startDate || job.warrantyEndDate;
       if (!rawDate) continue;
       const dateStr = rawDate.length >= 10 ? rawDate.slice(0, 10) : rawDate;
       if (!map[dateStr]) map[dateStr] = [];
@@ -328,11 +329,20 @@ const AdminDashboardHome: React.FC = () => {
         </div>
         <div className="flex flex-wrap gap-3">
           <button
-            onClick={openAddSiteTypeModal ?? openAddJobModal}
+            type="button"
+            onClick={openAddSiteTypeModal}
             className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-[#111111] border border-[#333333] text-gray-300 hover:border-[#F2C200] hover:text-white transition-all"
           >
             <i className="fas fa-building-user"></i>
             <span>Add Site</span>
+          </button>
+          <button
+            type="button"
+            onClick={openAddJobModal}
+            className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-[#111111] border border-[#333333] text-gray-300 hover:border-[#F2C200] hover:text-white transition-all"
+          >
+            <i className="fas fa-briefcase"></i>
+            <span>Add Job</span>
           </button>
           <Link
             to="/dashboard/certificates"
@@ -819,7 +829,8 @@ const AdminDashboardHome: React.FC = () => {
           </span>
         </Link>
         <button
-          onClick={openAddSiteTypeModal ?? openAddJobModal}
+          type="button"
+          onClick={openAddSiteTypeModal}
           className="flex flex-col items-center justify-center p-6 rounded-2xl bg-[#111111] border border-[#333333] hover:border-[#F2C200] transition-all group"
         >
           <div className="w-12 h-12 rounded-xl bg-[#F2C200]/10 flex items-center justify-center text-[#F2C200] mb-3 group-hover:bg-[#F2C200]/20 transition-colors">
@@ -1099,7 +1110,7 @@ const AdminDashboardHome: React.FC = () => {
                       title: `${scheduleSite.siteName || scheduleSite.clientName} — ${jobType}`,
                       description: jobType,
                       status: 'PENDING',
-                      startDate: jobDate,
+                      scheduledCleanDate: jobDate,
                       amount: newValue,
                       startTime,
                       duration,
@@ -1118,6 +1129,7 @@ const AdminDashboardHome: React.FC = () => {
                           status: 'PENDING',
                           startDate: jobDate,
                           warrantyEndDate: scheduleSite.dueDate || jobDate,
+                          scheduledCleanDate: jobDate,
                           paymentStatus: 'UNPAID',
                           amount: newValue,
                           startTime,

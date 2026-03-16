@@ -10,7 +10,7 @@ const TR19_REPORTS_STORAGE_KEY = 'bengal_tr19_reports';
 type StatusFilter = JobStatus | 'ALL';
 
 const AdminJobs: React.FC = () => {
-  const { jobs, searchQuery, setSearchQuery, handleDeleteJob } = useAdmin();
+  const { jobs, searchQuery, setSearchQuery, handleDeleteJob, openAddJobModal } = useAdmin();
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
 
@@ -102,6 +102,14 @@ const AdminJobs: React.FC = () => {
             <option value="COMPLETED">Completed</option>
             <option value="CANCELLED">Cancelled</option>
           </select>
+          <button
+            type="button"
+            onClick={openAddJobModal}
+            className="flex items-center gap-2 px-4 py-2 bg-[#F2C200] text-black rounded-xl text-sm font-bold hover:brightness-110 active:scale-95 transition-all shadow-md shadow-[#F2C2001A]"
+          >
+            <i className="fas fa-plus"></i>
+            <span>Add Job</span>
+          </button>
         </div>
       </div>
 

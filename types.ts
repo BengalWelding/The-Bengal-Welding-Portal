@@ -36,6 +36,8 @@ export interface Job {
   status: JobStatus;
   startDate: string;
   warrantyEndDate: string;
+  /** Date the next clean is actually scheduled for (used for calendar views). */
+  scheduledCleanDate?: string;
   paymentStatus: 'PAID' | 'UNPAID' | 'PARTIAL';
   amount: number;
   notes?: JobNote[];
