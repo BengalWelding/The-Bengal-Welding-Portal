@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAdmin } from '../contexts/AdminContext';
 import type { Job } from '../types';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   listInstallationSites,
   createInstallationSite,
@@ -55,6 +55,12 @@ const AdminSites: React.FC = () => {
     return { year: t.getFullYear(), month: t.getMonth() };
   });
   const [activeDateField, setActiveDateField] = useState<'start' | 'end' | null>(null);
+  const [siteFilter, setSiteFilter] = useState<'all' | 'overdue' | 'due-soon'>(() => {
+    const params = new URLSearchParams(location.search);
+    const value = params.get('filter');
+    if (value === 'overdue' || value === 'due-soon') return value;
+    return 'all';
+  });
 
   const JOB_TYPES = [
     'TR19 Grease Clean (Kitchen Extract)',
@@ -89,6 +95,16 @@ const AdminSites: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const value = params.get('filter');
+    if (value === 'overdue' || value === 'due-soon') {
+      setSiteFilter(value);
+    } else {
+      setSiteFilter('all');
+    }
+  }, [location.search]);
+
   const matchesSearch = (s: InstallationSite) =>
     !searchQuery ||
     s.site_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -99,7 +115,73 @@ const AdminSites: React.FC = () => {
     (s.contact_phone || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (s.notes || '').toLowerCase().includes(searchQuery.toLowerCase());
 
-  const filteredSites = sites.filter(matchesSearch);
+  const now = useMemo(() => new Date(), []);
+  const ninetyDaysFromNow = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 90);
+    return d;
+  }, []);
+
+  const tr19Reports = useMemo(() => {
+    try {
+      const r = localStorage.getItem('bengal_tr19_reports');
+      return r ? JSON.parse(r) : {};
+    } catch {
+      return {};
+    }
+  }, [jobs]);
+
+  const jobsWithCompletedTR19 = useMemo(
+    () => new Set<string>(Object.keys(tr19Reports).filter((id) => tr19Reports[id] != null)),
+    [tr19Reports]
+  );
+
+  const overdueJobsForFilter = useMemo(
+    () =>
+      jobs.filter((j) => {
+        if (!j.warrantyEndDate) return false;
+        const due = new Date(j.warrantyEndDate + (j.warrantyEndDate.length === 10 ? 'T12:00:00' : ''));
+        if (Number.isNaN(due.getTime())) return false;
+        return (
+          due < now &&
+          due > new Date(0) &&
+          !jobsWithCompletedTR19.has(j.id)
+        );
+      }),
+    [jobs, now, jobsWithCompletedTR19]
+  );
+
+  const dueSoonJobsForFilter = useMemo(
+    () =>
+      jobs.filter((j) => {
+        if (!j.warrantyEndDate) return false;
+        const due = new Date(j.warrantyEndDate + (j.warrantyEndDate.length === 10 ? 'T12:00:00' : ''));
+        if (Number.isNaN(due.getTime())) return false;
+        return (
+          due > now &&
+          due <= ninetyDaysFromNow &&
+          !jobsWithCompletedTR19.has(j.id)
+        );
+      }),
+    [jobs, now, ninetyDaysFromNow, jobsWithCompletedTR19]
+  );
+
+  const overdueSiteIds = useMemo(
+    () => new Set<string>(overdueJobsForFilter.map((j) => j.customerId || j.id)),
+    [overdueJobsForFilter]
+  );
+
+  const dueSoonSiteIds = useMemo(
+    () => new Set<string>(dueSoonJobsForFilter.map((j) => j.customerId || j.id)),
+    [dueSoonJobsForFilter]
+  );
+
+  const filteredSites = sites.filter((s) => {
+    if (!matchesSearch(s)) return false;
+    if (siteFilter === 'overdue') return overdueSiteIds.has(s.id);
+    if (siteFilter === 'due-soon') return dueSoonSiteIds.has(s.id);
+    return true;
+  });
 
   const siteScheduleMap = useMemo(() => {
     const map: Record<string, { startDate: string; endDate: string }> = {};
@@ -345,7 +427,9 @@ const AdminSites: React.FC = () => {
           <div>
             <h1 className="text-2xl font-black text-[#F2C200] tracking-tight">Sites</h1>
             <p className="text-gray-500 text-sm font-bold mt-0.5">
-              {sites.length} installation site{sites.length !== 1 ? 's' : ''}
+              {siteFilter === 'all' && `${sites.length} installation site${sites.length !== 1 ? 's' : ''}`}
+              {siteFilter === 'overdue' && `${overdueSiteIds.size} overdue site${overdueSiteIds.size !== 1 ? 's' : ''}`}
+              {siteFilter === 'due-soon' && `${dueSoonSiteIds.size} due soon site${dueSoonSiteIds.size !== 1 ? 's' : ''}`}
             </p>
           </div>
           <button
@@ -355,6 +439,44 @@ const AdminSites: React.FC = () => {
             <i className="fas fa-plus"></i>
             <span>Add Site</span>
           </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/dashboard/sites"
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${
+              siteFilter === 'all'
+                ? 'bg-[#F2C200]/10 border-[#F2C200] text-[#F2C200]'
+                : 'bg-[#111111] border-[#333333] text-gray-400 hover:border-[#F2C200] hover:text-white'
+            }`}
+          >
+            <i className="fas fa-building text-sm"></i>
+            <span>Active Sites</span>
+            <span className="text-[10px] font-black opacity-80">({sites.length})</span>
+          </Link>
+          <Link
+            to="/dashboard/sites?filter=overdue"
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${
+              siteFilter === 'overdue'
+                ? 'bg-red-500/10 border-red-500 text-red-400'
+                : 'bg-[#111111] border-[#333333] text-gray-400 hover:border-red-500 hover:text-red-400'
+            }`}
+          >
+            <i className="fas fa-triangle-exclamation text-sm"></i>
+            <span>Overdue</span>
+            <span className="text-[10px] font-black opacity-80">({overdueSiteIds.size})</span>
+          </Link>
+          <Link
+            to="/dashboard/sites?filter=due-soon"
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${
+              siteFilter === 'due-soon'
+                ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                : 'bg-[#111111] border-[#333333] text-gray-400 hover:border-amber-500 hover:text-amber-400'
+            }`}
+          >
+            <i className="fas fa-clock text-sm"></i>
+            <span>Due Soon</span>
+            <span className="text-[10px] font-black opacity-80">({dueSoonSiteIds.size})</span>
+          </Link>
         </div>
         <div className="relative w-full max-w-md">
           <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
@@ -466,7 +588,13 @@ const AdminSites: React.FC = () => {
         )}
         {!loading && filteredSites.length === 0 && (
           <div className="p-12 text-center text-gray-500 font-bold text-sm">
-            {sites.length === 0 ? 'No sites yet. Click Add Site to create one.' : 'No sites match your search.'}
+            {sites.length === 0
+              ? 'No sites yet. Click Add Site to create one.'
+              : siteFilter === 'overdue'
+                ? 'No overdue sites.'
+                : siteFilter === 'due-soon'
+                  ? 'No due soon sites.'
+                  : 'No sites match your search.'}
           </div>
         )}
       </div>

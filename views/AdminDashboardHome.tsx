@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Job } from '../types';
 import { useAdmin } from '../contexts/AdminContext';
 import { listServiceRequestsForAdmin } from '../lib/serviceRequests';
+import { listInstallationSites } from '../lib/installationSites';
 
 const TR19_REPORTS_STORAGE_KEY = 'bengal_tr19_reports';
 
@@ -80,6 +81,7 @@ const AdminDashboardHome: React.FC = () => {
   const [startTime, setStartTime] = useState('08:00');
   const [duration, setDuration] = useState(2);
   const [jobType, setJobType] = useState('TR19 Grease Clean (Kitchen Extract)');
+  const [siteCount, setSiteCount] = useState(0);
 
   const JOB_TYPES = [
     'TR19 Grease Clean (Kitchen Extract)',
@@ -104,11 +106,16 @@ const AdminDashboardHome: React.FC = () => {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    listInstallationSites()
+      .then((sites) => setSiteCount(sites.length))
+      .catch(() => setSiteCount(0));
+  }, []);
+
   const now = new Date();
   const ninetyDaysFromNow = new Date();
   ninetyDaysFromNow.setDate(now.getDate() + 90);
 
-  const uniqueSites = new Set(jobs.map((j) => j.customerId)).size;
   const overdueJobs = jobs.filter((j) => new Date(j.warrantyEndDate) < now && new Date(j.warrantyEndDate) > new Date(0));
   const dueSoonJobs = jobs.filter((j) => {
     const expiry = new Date(j.warrantyEndDate);
@@ -149,6 +156,16 @@ const AdminDashboardHome: React.FC = () => {
   const overdueForRevenue = overdueJobs.filter((j) => !jobsWithCompletedTR19.has(j.id));
   const overdueJobsDisplay = overdueJobs.filter((j) => !jobsWithCompletedTR19.has(j.id));
   const dueSoonJobsDisplay = dueSoonJobs.filter((j) => !jobsWithCompletedTR19.has(j.id));
+
+  const overdueSiteCount = useMemo(
+    () => new Set(overdueJobsDisplay.map((j) => j.customerId || j.id)).size,
+    [overdueJobsDisplay]
+  );
+
+  const dueSoonSiteCount = useMemo(
+    () => new Set(dueSoonJobsDisplay.map((j) => j.customerId || j.id)).size,
+    [dueSoonJobsDisplay]
+  );
 
   const recentCertificates = jobs
     .filter((j) => tr19Reports[j.id] != null)
@@ -369,25 +386,34 @@ const AdminDashboardHome: React.FC = () => {
 
       {/* Metric Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-[#111111] p-6 rounded-2xl border border-[#333333] flex items-center gap-4">
+        <Link
+          to="/dashboard/sites"
+          className="bg-[#111111] p-6 rounded-2xl border border-[#333333] flex items-center gap-4 hover:border-[#F2C200] transition-colors"
+        >
           <div className="w-12 h-12 rounded-xl bg-[#F2C200]/10 flex items-center justify-center text-[#F2C200]">
             <i className="fas fa-building text-xl"></i>
           </div>
           <div>
             <p className="text-[10px] font-black text-gray-500 uppercase tracking-tighter">Active Sites</p>
-            <p className="text-2xl font-black text-white">{uniqueSites}</p>
+            <p className="text-2xl font-black text-white">{siteCount}</p>
           </div>
-        </div>
-        <div className="bg-[#111111] p-6 rounded-2xl border border-[#333333] flex items-center gap-4">
+        </Link>
+        <Link
+          to="/dashboard/sites?filter=overdue"
+          className="bg-[#111111] p-6 rounded-2xl border border-[#333333] flex items-center gap-4 hover:border-red-500 transition-colors"
+        >
           <div className="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500">
             <i className="fas fa-triangle-exclamation text-xl"></i>
           </div>
           <div>
             <p className="text-[10px] font-black text-gray-500 uppercase tracking-tighter">Overdue</p>
-            <p className="text-2xl font-black text-white">{overdueJobsDisplay.length}</p>
+            <p className="text-2xl font-black text-white">{overdueSiteCount}</p>
           </div>
-        </div>
-        <div className="bg-[#111111] p-6 rounded-2xl border border-[#333333] flex items-center gap-4">
+        </Link>
+        <Link
+          to="/dashboard/sites?filter=due-soon"
+          className="bg-[#111111] p-6 rounded-2xl border border-[#333333] flex items-center gap-4 hover:border-amber-500 transition-colors"
+        >
           <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
             <i className="fas fa-clock text-xl"></i>
           </div>
@@ -395,7 +421,7 @@ const AdminDashboardHome: React.FC = () => {
             <p className="text-[10px] font-black text-gray-500 uppercase tracking-tighter">Due Soon</p>
             <p className="text-2xl font-black text-white">{dueSoonJobsDisplay.length}</p>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Job Calendar */}

@@ -257,15 +257,6 @@ const AdminTR19ReportForm: React.FC = () => {
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-400 mb-1">BESA GHO/GHT Cert No. *</label>
-            <input
-              value={besaCertNo}
-              onChange={(e) => setBesaCertNo(e.target.value)}
-              placeholder="Certificate number"
-              className="w-full px-4 py-2.5 bg-black border border-[#333333] rounded-xl text-white text-sm"
-            />
-          </div>
-          <div>
             <label className="block text-xs font-bold text-gray-400 mb-1">Second Operative Name</label>
             <input
               value={secondOperativeName}
