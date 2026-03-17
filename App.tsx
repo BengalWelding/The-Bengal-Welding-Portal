@@ -23,6 +23,7 @@ import AdminAddCustomer from './views/AdminAddCustomer';
 import AdminCustomers from './views/AdminCustomers';
 import AdminLeads from './views/AdminLeads';
 import AdminStockRequests from './views/AdminStockRequests';
+import AdminProducts from './views/AdminProducts.tsx';
 import SetPassword from './views/SetPassword';
 import ProductsCatalog from './views/ProductsCatalog';
 import GoCardlessCallback from './views/GoCardlessCallback';
@@ -116,6 +117,7 @@ const App: React.FC = () => {
                     <Route path="service-requests" element={<AdminServiceRequests />} />
                     <Route path="jobs" element={<AdminJobs />} />
                     <Route path="sites" element={<AdminSites />} />
+                    <Route path="products" element={<AdminProducts />} />
                     <Route path="certificates" element={<AdminCertificates />} />
                     <Route path="tr19" element={<AdminTR19Hub />} />
                     <Route path="tr19/add" element={<AdminSiteSurveyForm />} />

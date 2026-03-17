@@ -18,6 +18,7 @@ const SIDEBAR_ITEMS = [
   { path: '/dashboard/stock-requests', label: 'Stock Requests', icon: 'fa-boxes-stacked' },
   { path: '/dashboard/jobs', label: 'Jobs', icon: 'fa-briefcase' },
   { path: '/dashboard/sites', label: 'Sites', icon: 'fa-building' },
+  { path: '/dashboard/products', label: 'Products', icon: 'fa-box-open' },
   { path: '/dashboard/service-requests', label: 'Service Requests', icon: 'fa-clipboard-check' },
   // TR19 Certificates sidebar button hidden (route still available)
   // { path: '/dashboard/certificates', label: 'TR19 Certificates', icon: 'fa-certificate' },

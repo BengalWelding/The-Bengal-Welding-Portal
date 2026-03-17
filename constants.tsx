@@ -34,5 +34,5 @@ export const LOGO = (className: string = "w-10 h-10") => (
 
 export const BRAND_NAME = "Bengal Welding";
 
-export const BUSINESS_EMAIL = "info@bengalwelding.co.uk";
-export const BUSINESS_PHONE = "01215552020";
+export const BUSINESS_EMAIL = "admin@bengalwelding.co.uk";
+export const BUSINESS_PHONE = "0330 043 0504";

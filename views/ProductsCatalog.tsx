@@ -1,8 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MOCK_PRODUCTS } from '../mockData';
 import { Product, User } from '../types';
 import { BUSINESS_EMAIL, BUSINESS_PHONE } from '../constants';
+import { listProducts } from '../lib/products';
 
 interface ProductsCatalogProps {
   user?: User | null;
@@ -19,11 +19,36 @@ function formatProductPrice(product: Product): string {
 const ProductsCatalog: React.FC<ProductsCatalogProps> = () => {
   const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = React.useState('All');
-  const categories = ['All', ...new Set(MOCK_PRODUCTS.map((p) => p.category))];
-  const filteredProducts =
-    selectedCategory === 'All'
-      ? MOCK_PRODUCTS
-      : MOCK_PRODUCTS.filter((p) => p.category === selectedCategory);
+  const [products, setProducts] = React.useState<Product[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const data = await listProducts();
+        setProducts(data);
+      } catch (e) {
+        setProducts([]);
+        setLoadError(e instanceof Error ? e.message : 'Failed to load products');
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const categories = React.useMemo(
+    () => ['All', ...new Set(products.map((p) => p.category))],
+    [products]
+  );
+  const filteredProducts = React.useMemo(() => {
+    return selectedCategory === 'All'
+      ? products
+      : products.filter((p) => p.category === selectedCategory);
+  }, [products, selectedCategory]);
 
   const getQuoteEmailLink = (product: Product) =>
     `mailto:${BUSINESS_EMAIL}?subject=${encodeURIComponent(`Quote request – ${product.name}`)}`;
@@ -40,6 +65,20 @@ const ProductsCatalog: React.FC<ProductsCatalogProps> = () => {
         <h1 className="text-2xl font-bold text-[#F2C200]">Equipment & Services</h1>
         <p className="text-white opacity-80">Professional commercial kitchen solutions. Contact us for a quote.</p>
       </header>
+
+      {loading ? (
+        <div className="bg-[#111111] border border-[#333333] p-8 rounded-2xl text-center text-gray-400 font-bold">
+          Loading products...
+        </div>
+      ) : loadError ? (
+        <div className="bg-[#111111] border border-red-800/50 p-8 rounded-2xl text-center text-red-400 font-bold">
+          {loadError}
+        </div>
+      ) : products.length === 0 ? (
+        <div className="bg-[#111111] border border-[#333333] p-8 rounded-2xl text-center text-gray-500 font-bold">
+          No products available yet.
+        </div>
+      ) : null}
 
       {/* Category Filter */}
       <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -67,6 +106,12 @@ const ProductsCatalog: React.FC<ProductsCatalogProps> = () => {
                 src={product.image} 
                 alt={product.name} 
                 className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-500"
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  if (img.dataset.fallbackApplied === '1') return;
+                  img.dataset.fallbackApplied = '1';
+                  img.src = '/test-crop.png';
+                }}
               />
               <span className="absolute top-3 right-3 bg-[#F2C200] px-2 py-1 rounded-md text-[10px] font-black text-black shadow-lg uppercase tracking-wide">
                 {product.category}
@@ -125,9 +170,22 @@ const ProductsCatalog: React.FC<ProductsCatalogProps> = () => {
           <p className="text-sm text-gray-400 mt-1">
             We specialize in bespoke stainless steel tables and extraction units.
           </p>
-          <button className="mt-4 font-bold text-sm text-[#F2C200] hover:text-white transition-colors">
-            Contact Engineering Team →
-          </button>
+          <div className="mt-4 flex gap-2">
+            <a
+              href={`mailto:${BUSINESS_EMAIL}`}
+              className="bg-[#F2C200] text-black px-4 py-2 rounded-lg text-sm font-bold hover:brightness-110 transition-all inline-flex items-center gap-1"
+            >
+              <i className="fas fa-envelope text-xs"></i>
+              Email engineering team
+            </a>
+            <a
+              href={getQuotePhoneLink()}
+              className="bg-[#111111] border border-[#333333] text-[#F2C200] px-4 py-2 rounded-lg text-sm font-bold hover:border-[#F2C200] transition-all inline-flex items-center gap-1"
+            >
+              <i className="fas fa-phone text-xs"></i>
+              Call the team
+            </a>
+          </div>
         </div>
       </div>
     </div>

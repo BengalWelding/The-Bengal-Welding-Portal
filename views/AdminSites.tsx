@@ -212,6 +212,22 @@ const AdminSites: React.FC = () => {
     return map;
   }, [jobs]);
 
+  const getLatestScheduledJobForSite = (siteId: string): Job | null => {
+    let latest: Job | null = null;
+    for (const j of jobs) {
+      if (!j.customerId || j.customerId !== siteId) continue;
+      if (!j.startDate) continue;
+      const start = j.startDate.slice(0, 10);
+      if (!latest) {
+        latest = j;
+        continue;
+      }
+      const latestStart = latest.startDate?.slice(0, 10) || '';
+      if (start > latestStart) latest = j;
+    }
+    return latest;
+  };
+
   const openAdd = () => {
     setEditingSite(null);
     setForm({
@@ -371,11 +387,12 @@ const AdminSites: React.FC = () => {
   const labelClass = 'block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5';
 
   const openScheduleForSite = (site: InstallationSite) => {
+    const existing = getLatestScheduledJobForSite(site.id);
     setScheduleSite(site);
-    setStartDate('');
-    setEndDate('');
-    setStartTime('08:00');
-    setJobType('TR19 Grease Clean (Kitchen Extract)');
+    setStartDate(existing?.startDate?.slice(0, 10) || '');
+    setEndDate((existing?.warrantyEndDate || existing?.startDate || '').slice(0, 10) || '');
+    setStartTime(existing?.startTime || '08:00');
+    setJobType(existing?.jobType || 'TR19 Grease Clean (Kitchen Extract)');
     setScheduleError(null);
     setScheduleModalOpen(true);
   };
@@ -395,30 +412,53 @@ const AdminSites: React.FC = () => {
     const startStr = start.toISOString().slice(0, 10);
     const endStr = end.toISOString().slice(0, 10);
 
-    const id = `${scheduleSite.id}-${startStr}-${endStr}-${Math.random().toString(36).slice(2, 8)}`;
-    const job: Job = {
-      id,
-      title: `${scheduleSite.site_name} — ${jobType}`,
-      description: jobType,
-      customerId: scheduleSite.id,
-      customerName: scheduleSite.site_name,
-      customerAddress: scheduleSite.address,
-      customerPostcode: scheduleSite.postcode,
-      contactName: scheduleSite.contact_name,
-      status: 'PENDING',
-      startDate: startStr,
-      warrantyEndDate: endStr,
-      scheduledCleanDate: startStr,
-      paymentStatus: 'UNPAID',
-      amount: 0,
-      startTime,
-      jobType,
-      leadOperative: 'ZAKEE — zakee.hussain@outlook.com',
-    };
-    setJobs((prev) => [job, ...prev]);
+    const existing = getLatestScheduledJobForSite(scheduleSite.id);
+    const nextJob: Job = existing
+      ? {
+          ...existing,
+          title: `${scheduleSite.site_name} — ${jobType}`,
+          description: jobType,
+          customerId: scheduleSite.id,
+          customerName: scheduleSite.site_name,
+          customerAddress: scheduleSite.address,
+          customerPostcode: scheduleSite.postcode,
+          contactName: scheduleSite.contact_name,
+          status: existing.status || 'PENDING',
+          startDate: startStr,
+          warrantyEndDate: endStr,
+          scheduledCleanDate: startStr,
+          startTime,
+          jobType,
+        }
+      : {
+          id: `${scheduleSite.id}-${startStr}-${endStr}-${Math.random().toString(36).slice(2, 8)}`,
+          title: `${scheduleSite.site_name} — ${jobType}`,
+          description: jobType,
+          customerId: scheduleSite.id,
+          customerName: scheduleSite.site_name,
+          customerAddress: scheduleSite.address,
+          customerPostcode: scheduleSite.postcode,
+          contactName: scheduleSite.contact_name,
+          status: 'PENDING',
+          startDate: startStr,
+          warrantyEndDate: endStr,
+          scheduledCleanDate: startStr,
+          paymentStatus: 'UNPAID',
+          amount: 0,
+          startTime,
+          jobType,
+          leadOperative: 'ZAKEE — zakee.hussain@outlook.com',
+        };
+
+    setJobs((prev) => {
+      if (existing) {
+        return prev.map((j) => (j.id === existing.id ? nextJob : j));
+      }
+      return [nextJob, ...prev];
+    });
     try {
       if (saveJob) {
-        await saveJob(job);
+        await saveJob(nextJob);
       } else if (refreshJobs) {
         await refreshJobs();
       }
@@ -571,9 +611,13 @@ const AdminSites: React.FC = () => {
                       )}
                       <button
                         onClick={() => openScheduleForSite(s)}
-                        className="px-3 py-1.5 rounded-full text-xs font-bold bg-[#F2C200] text-black hover:brightness-110 active:scale-95 transition-all"
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold hover:brightness-110 active:scale-95 transition-all ${
+                          siteScheduleMap[s.id]
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-[#F2C200] text-black'
+                        }`}
                       >
-                        Schedule dates
+                        {siteScheduleMap[s.id] ? 'Dates confirmed' : 'Schedule dates'}
                       </button>
                       <button
                         onClick={() => openEdit(s)}

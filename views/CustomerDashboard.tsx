@@ -22,6 +22,7 @@ type TabType = 'ACTIVE' | 'HISTORY' | 'PROFILE';
 
 const SERVICE_REQUEST_BANNER_DISMISSED_KEY = 'bengal_sr_banner_dismissed';
 const MY_PRODUCTS_VISIBLE_KEY = 'bengal_my_products_visible';
+const COMPLAINTS_VISIBLE_KEY = 'bengal_complaints_visible';
 
 const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser }) => {
   const [activeTab, setActiveTab] = useState<TabType>('ACTIVE');
@@ -60,6 +61,14 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser
       return true;
     }
   });
+  const [showComplaintsSection, setShowComplaintsSection] = useState<boolean>(() => {
+    try {
+      const savedPreference = localStorage.getItem(COMPLAINTS_VISIBLE_KEY);
+      return savedPreference === null ? true : savedPreference === '1';
+    } catch {
+      return true;
+    }
+  });
   const [notificationBannerDismissed, setNotificationBannerDismissed] = useState<Set<string>>(() => {
     try {
       const raw = sessionStorage.getItem(SERVICE_REQUEST_BANNER_DISMISSED_KEY);
@@ -75,6 +84,10 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser
   const [complaintSubmitting, setComplaintSubmitting] = useState(false);
   const [complaintError, setComplaintError] = useState<string | null>(null);
   const [complaintSuccess, setComplaintSuccess] = useState(false);
+  const [complaintAttachment, setComplaintAttachment] = useState<File | null>(null);
+  const [complaintAttachmentPreviewUrl, setComplaintAttachmentPreviewUrl] = useState<string | null>(null);
+  const [complaintAttachmentInputKey, setComplaintAttachmentInputKey] = useState(0);
+  const [selectedComplaint, setSelectedComplaint] = useState<(Awaited<ReturnType<typeof listComplaintsForCustomer>>[number]) | null>(null);
   const [accessDetails, setAccessDetails] = useState<{
     accessDifficulty: '' | 'easy' | 'medium' | 'difficult';
     applianceLocation: string;
@@ -201,6 +214,23 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser
     load();
   }, [user.id]);
 
+  useEffect(() => {
+    if (!complaintAttachment) {
+      if (complaintAttachmentPreviewUrl) URL.revokeObjectURL(complaintAttachmentPreviewUrl);
+      setComplaintAttachmentPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(complaintAttachment);
+    setComplaintAttachmentPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [complaintAttachment]);
+
 
   useEffect(() => {
     const hash = window.location.hash || '';
@@ -284,6 +314,18 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser
       const next = !prev;
       try {
         localStorage.setItem(MY_PRODUCTS_VISIBLE_KEY, next ? '1' : '0');
+      } catch {
+        // ignore localStorage write failures
+      }
+      return next;
+    });
+  };
+
+  const toggleComplaintsVisibility = () => {
+    setShowComplaintsSection((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(COMPLAINTS_VISIBLE_KEY, next ? '1' : '0');
       } catch {
         // ignore localStorage write failures
       }
@@ -650,145 +692,6 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser
             )}
           </section>
 
-          {/* Complaints Section */}
-          <section className="bg-[#111111] rounded-xl border border-[#333333] overflow-hidden">
-            <div className="p-6">
-              <h3 className="text-lg font-bold text-[#F2C200] mb-2">Complaints</h3>
-              <p className="text-gray-400 text-sm mb-4">Do you want to raise a complaint? Our team will respond as soon as possible.</p>
-              {!showComplaintForm ? (
-                <button
-                  onClick={() => {
-                    setShowComplaintForm(true);
-                    setComplaintForm({
-                      customerName: user.name,
-                      siteName: '',
-                      siteAddress: user.address || '',
-                      contactEmail: user.email,
-                      contactPhone: user.phone || '',
-                      subject: '',
-                      complaintType: '',
-                      description: '',
-                      dateOfIncident: '',
-                      preferredContact: '',
-                    });
-                  }}
-                  className="px-6 py-3 rounded-xl font-bold bg-[#F2C200] text-black hover:brightness-110 transition-all"
-                >
-                  Raise a Complaint
-                </button>
-              ) : (
-                <form
-                  className="grid grid-cols-1 md:grid-cols-2 gap-4"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    setComplaintError(null);
-                    setComplaintSuccess(false);
-                    if (!complaintForm.customerName || !complaintForm.contactEmail || !complaintForm.description) {
-                      setComplaintError('Please fill in customer name, contact email, and description.');
-                      return;
-                    }
-                    try {
-                      setComplaintSubmitting(true);
-                      await createComplaint({
-                        customerName: complaintForm.customerName,
-                        siteName: complaintForm.siteName || undefined,
-                        siteAddress: complaintForm.siteAddress || undefined,
-                        contactEmail: complaintForm.contactEmail,
-                        contactPhone: complaintForm.contactPhone || undefined,
-                        subject: complaintForm.subject || undefined,
-                        complaintType: complaintForm.complaintType || undefined,
-                        description: complaintForm.description,
-                        dateOfIncident: complaintForm.dateOfIncident || undefined,
-                        preferredContact: complaintForm.preferredContact || undefined,
-                      });
-                      setComplaintSuccess(true);
-                      setComplaintForm({ customerName: '', siteName: '', siteAddress: '', contactEmail: '', contactPhone: '', subject: '', complaintType: '', description: '', dateOfIncident: '', preferredContact: '' });
-                      setShowComplaintForm(false);
-                      const comps = await listComplaintsForCustomer(user.id);
-                      setComplaints(comps);
-                    } catch (err) {
-                      setComplaintError(err instanceof Error ? err.message : 'Failed to submit complaint.');
-                    } finally {
-                      setComplaintSubmitting(false);
-                    }
-                  }}
-                >
-                  <div className="flex flex-col">
-                    <label className="text-xs font-bold text-gray-400 uppercase mb-1">Customer Name *</label>
-                    <input type="text" value={complaintForm.customerName} onChange={(e) => setComplaintForm({ ...complaintForm, customerName: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" required />
-                  </div>
-                  <div className="flex flex-col">
-                    <label className="text-xs font-bold text-gray-400 uppercase mb-1">Site Name</label>
-                    <input type="text" value={complaintForm.siteName} onChange={(e) => setComplaintForm({ ...complaintForm, siteName: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" />
-                  </div>
-                  <div className="flex flex-col md:col-span-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase mb-1">Site Address</label>
-                    <input type="text" value={complaintForm.siteAddress} onChange={(e) => setComplaintForm({ ...complaintForm, siteAddress: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <label className="text-xs font-bold text-gray-400 uppercase mb-1">Contact Email *</label>
-                    <input type="email" value={complaintForm.contactEmail} onChange={(e) => setComplaintForm({ ...complaintForm, contactEmail: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" required />
-                  </div>
-                  <div className="flex flex-col">
-                    <label className="text-xs font-bold text-gray-400 uppercase mb-1">Contact Phone</label>
-                    <input type="tel" value={complaintForm.contactPhone} onChange={(e) => setComplaintForm({ ...complaintForm, contactPhone: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <label className="text-xs font-bold text-gray-400 uppercase mb-1">Subject</label>
-                    <input type="text" value={complaintForm.subject} onChange={(e) => setComplaintForm({ ...complaintForm, subject: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <label className="text-xs font-bold text-gray-400 uppercase mb-1">Complaint Type</label>
-                    <select value={complaintForm.complaintType} onChange={(e) => setComplaintForm({ ...complaintForm, complaintType: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]">
-                      <option value="">Select...</option>
-                      <option value="service">Service</option>
-                      <option value="quality">Quality</option>
-                      <option value="delivery">Delivery</option>
-                      <option value="billing">Billing</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                  <div className="flex flex-col md:col-span-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase mb-1">Description *</label>
-                    <textarea rows={4} value={complaintForm.description} onChange={(e) => setComplaintForm({ ...complaintForm, description: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200] resize-none" required placeholder="Describe your complaint in detail..." />
-                  </div>
-                  <div className="flex flex-col">
-                    <label className="text-xs font-bold text-gray-400 uppercase mb-1">Date of Incident</label>
-                    <DatePicker selected={complaintForm.dateOfIncident ? new Date(complaintForm.dateOfIncident) : null} onChange={(d) => setComplaintForm({ ...complaintForm, dateOfIncident: d ? d.toISOString().split('T')[0] : '' })} dateFormat="dd/MM/yyyy" placeholderText="Select date" className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" calendarClassName="react-datepicker-dark" />
-                  </div>
-                  <div className="flex flex-col">
-                    <label className="text-xs font-bold text-gray-400 uppercase mb-1">Preferred Contact Method</label>
-                    <select value={complaintForm.preferredContact} onChange={(e) => setComplaintForm({ ...complaintForm, preferredContact: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]">
-                      <option value="">Select...</option>
-                      <option value="email">Email</option>
-                      <option value="phone">Phone</option>
-                      <option value="either">Either</option>
-                    </select>
-                  </div>
-                  {complaintError && <p className="text-xs text-red-400 md:col-span-2">{complaintError}</p>}
-                  {complaintSuccess && <p className="text-xs text-green-400 md:col-span-2">Complaint submitted successfully. We will be in touch shortly.</p>}
-                  <div className="md:col-span-2 flex gap-3">
-                    <button type="submit" disabled={complaintSubmitting} className="px-6 py-3 rounded-xl font-bold bg-[#F2C200] text-black hover:brightness-110 disabled:opacity-60">{complaintSubmitting ? 'Submitting...' : 'Submit Complaint'}</button>
-                    <button type="button" onClick={() => setShowComplaintForm(false)} className="px-6 py-3 rounded-xl font-bold bg-[#333333] text-white hover:bg-[#444]">Cancel</button>
-                  </div>
-                </form>
-              )}
-              {complaints.length > 0 && !showComplaintForm && (
-                <div className="mt-6 pt-6 border-t border-[#333333]">
-                  <h4 className="text-sm font-bold text-gray-400 uppercase mb-2">Your Complaints</h4>
-                  <div className="space-y-2">
-                    {complaints.slice(0, 5).map((c) => (
-                      <div key={c.id} className="flex justify-between items-center p-3 rounded-lg bg-black/40 border border-[#333333]">
-                        <span className="text-sm text-white truncate">{c.subject || c.description?.slice(0, 50) || 'Complaint'}</span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${c.status === 'resolved' || c.status === 'closed' ? 'bg-green-900/30 text-green-400' : 'bg-[#FFF9E6]/20 text-[#B28900]'}`}>{c.status}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-
           <section ref={requestFormRef} className="bg-[#111111] border border-[#333333] p-6 rounded-2xl text-white">
             <h3 className="text-xl font-bold text-[#F2C200] mb-4">Request a Service</h3>
             <p className="text-gray-400 text-sm mb-6">
@@ -1000,6 +903,387 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user: initialUser
               </div>
             </form>
           </section>
+
+          {/* Complaints Section (moved under Request a Service) */}
+          <section className="bg-[#111111] rounded-xl border border-[#333333] overflow-hidden">
+            <div className="p-6">
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div>
+                  <h3 className="text-lg font-bold text-[#F2C200]">Complaints</h3>
+                  <p className="text-gray-400 text-sm mt-1">
+                    Raise a complaint or check updates from our team. You can hide/show this section any time.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleComplaintsVisibility}
+                  aria-pressed={showComplaintsSection}
+                  className={`relative inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs sm:text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-[#F2C200] ${
+                    showComplaintsSection
+                      ? 'bg-[#F2C200] text-black border-[#F2C200] shadow-[0_0_0_2px_rgba(242,194,0,0.18)]'
+                      : 'bg-[#111111] text-[#F2C200] border-[#F2C200]'
+                  }`}
+                >
+                  <span className="uppercase tracking-wide">{showComplaintsSection ? 'Hide' : 'Show'}</span>
+                  <span
+                    className={`relative inline-flex h-5 w-10 rounded-full transition-colors ${
+                      showComplaintsSection ? 'bg-black/25' : 'bg-[#333333]'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                        showComplaintsSection ? 'translate-x-5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </span>
+                </button>
+              </div>
+
+              {!showComplaintsSection ? (
+                <div className="mt-4 p-5 rounded-xl bg-black/30 border border-[#333333] text-sm text-gray-300 flex items-center justify-between gap-3">
+                  <span>Complaints are hidden. Toggle “Show” to raise a complaint or view updates.</span>
+                  <button
+                    type="button"
+                    onClick={toggleComplaintsVisibility}
+                    className="px-4 py-2 rounded-lg bg-[#F2C200] text-black font-bold text-xs sm:text-sm hover:brightness-110 transition-all"
+                  >
+                    Show Complaints
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="mt-4">
+                    {!showComplaintForm ? (
+                      <button
+                        onClick={() => {
+                          setShowComplaintForm(true);
+                          setComplaintForm({
+                            customerName: user.name,
+                            siteName: '',
+                            siteAddress: user.address || '',
+                            contactEmail: user.email,
+                            contactPhone: user.phone || '',
+                            subject: '',
+                            complaintType: '',
+                            description: '',
+                            dateOfIncident: '',
+                            preferredContact: '',
+                          });
+                          setComplaintAttachment(null);
+                          setComplaintAttachmentInputKey((k) => k + 1);
+                        }}
+                        className="px-6 py-3 rounded-xl font-bold bg-[#F2C200] text-black hover:brightness-110 transition-all"
+                      >
+                        Raise a Complaint
+                      </button>
+                    ) : (
+                      <form
+                        className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          setComplaintError(null);
+                          setComplaintSuccess(false);
+                          if (!complaintForm.customerName || !complaintForm.contactEmail || !complaintForm.description) {
+                            setComplaintError('Please fill in customer name, contact email, and description.');
+                            return;
+                          }
+                          try {
+                            setComplaintSubmitting(true);
+                            await createComplaint({
+                              customerName: complaintForm.customerName,
+                              siteName: complaintForm.siteName || undefined,
+                              siteAddress: complaintForm.siteAddress || undefined,
+                              contactEmail: complaintForm.contactEmail,
+                              contactPhone: complaintForm.contactPhone || undefined,
+                              subject: complaintForm.subject || undefined,
+                              complaintType: complaintForm.complaintType || undefined,
+                              description: complaintForm.description,
+                              dateOfIncident: complaintForm.dateOfIncident || undefined,
+                              preferredContact: complaintForm.preferredContact || undefined,
+                              attachment: complaintAttachment,
+                            });
+                            setComplaintSuccess(true);
+                            setComplaintForm({ customerName: '', siteName: '', siteAddress: '', contactEmail: '', contactPhone: '', subject: '', complaintType: '', description: '', dateOfIncident: '', preferredContact: '' });
+                            setComplaintAttachment(null);
+                            setComplaintAttachmentInputKey((k) => k + 1);
+                            setShowComplaintForm(false);
+                            const comps = await listComplaintsForCustomer(user.id);
+                            setComplaints(comps);
+                          } catch (err) {
+                            setComplaintError(err instanceof Error ? err.message : 'Failed to submit complaint.');
+                          } finally {
+                            setComplaintSubmitting(false);
+                          }
+                        }}
+                      >
+                        <div className="flex flex-col">
+                          <label className="text-xs font-bold text-gray-400 uppercase mb-1">Customer Name *</label>
+                          <input type="text" value={complaintForm.customerName} onChange={(e) => setComplaintForm({ ...complaintForm, customerName: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" required />
+                        </div>
+                        <div className="flex flex-col">
+                          <label className="text-xs font-bold text-gray-400 uppercase mb-1">Site Name</label>
+                          <input type="text" value={complaintForm.siteName} onChange={(e) => setComplaintForm({ ...complaintForm, siteName: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" />
+                        </div>
+                        <div className="flex flex-col md:col-span-2">
+                          <label className="text-xs font-bold text-gray-400 uppercase mb-1">Site Address</label>
+                          <input type="text" value={complaintForm.siteAddress} onChange={(e) => setComplaintForm({ ...complaintForm, siteAddress: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" />
+                        </div>
+                        <div className="flex flex-col">
+                          <label className="text-xs font-bold text-gray-400 uppercase mb-1">Contact Email *</label>
+                          <input type="email" value={complaintForm.contactEmail} onChange={(e) => setComplaintForm({ ...complaintForm, contactEmail: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" required />
+                        </div>
+                        <div className="flex flex-col">
+                          <label className="text-xs font-bold text-gray-400 uppercase mb-1">Contact Phone</label>
+                          <input type="tel" value={complaintForm.contactPhone} onChange={(e) => setComplaintForm({ ...complaintForm, contactPhone: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" />
+                        </div>
+                        <div className="flex flex-col">
+                          <label className="text-xs font-bold text-gray-400 uppercase mb-1">Subject</label>
+                          <input type="text" value={complaintForm.subject} onChange={(e) => setComplaintForm({ ...complaintForm, subject: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" />
+                        </div>
+                        <div className="flex flex-col">
+                          <label className="text-xs font-bold text-gray-400 uppercase mb-1">Complaint Type</label>
+                          <select value={complaintForm.complaintType} onChange={(e) => setComplaintForm({ ...complaintForm, complaintType: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]">
+                            <option value="">Select...</option>
+                            <option value="service">Service</option>
+                            <option value="quality">Quality</option>
+                            <option value="delivery">Delivery</option>
+                            <option value="billing">Billing</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                        <div className="flex flex-col md:col-span-2">
+                          <label className="text-xs font-bold text-gray-400 uppercase mb-1">Description *</label>
+                          <textarea rows={4} value={complaintForm.description} onChange={(e) => setComplaintForm({ ...complaintForm, description: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200] resize-none" required placeholder="Describe your complaint in detail..." />
+                        </div>
+                        <div className="flex flex-col md:col-span-2">
+                          <label className="text-xs font-bold text-gray-400 uppercase mb-1">Attachment (photo/video)</label>
+                          <input
+                            key={complaintAttachmentInputKey}
+                            type="file"
+                            accept="image/*,video/*"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0] || null;
+                              setComplaintAttachment(f);
+                            }}
+                            className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]"
+                          />
+                          <div className="mt-2 flex items-center justify-between gap-3">
+                            <p className="text-[11px] text-gray-500">
+                              Optional. Images/videos only. Max 25MB.
+                            </p>
+                            {complaintAttachment && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setComplaintAttachment(null);
+                                  setComplaintAttachmentInputKey((k) => k + 1);
+                                }}
+                                className="text-[11px] font-bold text-gray-400 hover:text-white"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                          {complaintAttachment && (
+                            <p className="mt-1 text-[11px] text-gray-400 truncate">
+                              Selected: {complaintAttachment.name} ({Math.max(1, Math.round(complaintAttachment.size / 1024))} KB)
+                            </p>
+                          )}
+                          {complaintAttachment && complaintAttachmentPreviewUrl && (
+                            <div className="mt-3 border border-[#333333] rounded-xl bg-black/30 p-3">
+                              <p className="text-xs font-bold text-gray-400 uppercase mb-2">Preview</p>
+                              {complaintAttachment.type?.startsWith('video/') ? (
+                                <video
+                                  src={complaintAttachmentPreviewUrl}
+                                  controls
+                                  className="w-full rounded-lg max-h-[320px] bg-black"
+                                />
+                              ) : (
+                                <img
+                                  src={complaintAttachmentPreviewUrl}
+                                  alt="Attachment preview"
+                                  className="w-full rounded-lg max-h-[320px] object-contain bg-black"
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col">
+                          <label className="text-xs font-bold text-gray-400 uppercase mb-1">Date of Incident</label>
+                          <DatePicker selected={complaintForm.dateOfIncident ? new Date(complaintForm.dateOfIncident) : null} onChange={(d) => setComplaintForm({ ...complaintForm, dateOfIncident: d ? d.toISOString().split('T')[0] : '' })} dateFormat="dd/MM/yyyy" placeholderText="Select date" className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]" calendarClassName="react-datepicker-dark" />
+                        </div>
+                        <div className="flex flex-col">
+                          <label className="text-xs font-bold text-gray-400 uppercase mb-1">Preferred Contact Method</label>
+                          <select value={complaintForm.preferredContact} onChange={(e) => setComplaintForm({ ...complaintForm, preferredContact: e.target.value })} className="w-full px-4 py-3 rounded-xl bg-black border border-[#333333] text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#F2C200]">
+                            <option value="">Select...</option>
+                            <option value="email">Email</option>
+                            <option value="phone">Phone</option>
+                            <option value="either">Either</option>
+                          </select>
+                        </div>
+                        {complaintError && <p className="text-xs text-red-400 md:col-span-2">{complaintError}</p>}
+                        {complaintSuccess && <p className="text-xs text-green-400 md:col-span-2">Complaint submitted successfully. We will be in touch shortly.</p>}
+                        <div className="md:col-span-2 flex gap-3">
+                          <button type="submit" disabled={complaintSubmitting} className="px-6 py-3 rounded-xl font-bold bg-[#F2C200] text-black hover:brightness-110 disabled:opacity-60">{complaintSubmitting ? 'Submitting...' : 'Submit Complaint'}</button>
+                          <button type="button" onClick={() => { setShowComplaintForm(false); setComplaintAttachment(null); setComplaintAttachmentInputKey((k) => k + 1); }} className="px-6 py-3 rounded-xl font-bold bg-[#333333] text-white hover:bg-[#444]">Cancel</button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+
+                  {complaints.length > 0 && !showComplaintForm && (
+                    <div className="mt-6 pt-6 border-t border-[#333333]">
+                      <h4 className="text-sm font-bold text-gray-400 uppercase mb-2">Your Complaints</h4>
+                      <div className="space-y-2">
+                        {complaints.slice(0, 5).map((c) => (
+                          <button
+                            type="button"
+                            key={c.id}
+                            onClick={() => setSelectedComplaint(c)}
+                            className="w-full text-left flex justify-between items-center p-3 rounded-lg bg-black/40 border border-[#333333] hover:border-[#444] transition-colors"
+                          >
+                            <div className="min-w-0 pr-3">
+                              <span className="text-sm text-white truncate block">{c.subject || c.description?.slice(0, 50) || 'Complaint'}</span>
+                              {c.admin_notes && (
+                                <span className="text-[11px] text-gray-500 truncate block mt-1">
+                                  Admin reply: {c.admin_notes}
+                                </span>
+                              )}
+                            </div>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${c.status === 'resolved' || c.status === 'closed' ? 'bg-green-900/30 text-green-400' : 'bg-[#FFF9E6]/20 text-[#B28900]'}`}>{c.status}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </section>
+
+          {/* Complaint details modal (customer) */}
+          {selectedComplaint && (
+            <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+              <div className="bg-[#111111] border border-[#333333] rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl">
+                <div className="bg-[#F2C200] p-6 text-black flex justify-between items-center">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-bold truncate">{selectedComplaint.subject || 'Complaint details'}</h2>
+                    <p className="text-xs opacity-80 truncate">
+                      Submitted {new Date(selectedComplaint.created_at).toLocaleString()} • Status {selectedComplaint.status.replace('_', ' ')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedComplaint(null)}
+                    className="text-black hover:opacity-70"
+                    aria-label="Close"
+                  >
+                    <i className="fas fa-times text-xl"></i>
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Customer name</p>
+                      <p className="text-sm text-white mt-1 break-words">{selectedComplaint.customer_name}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Contact email</p>
+                      <p className="text-sm text-white mt-1 break-words">{selectedComplaint.contact_email}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Contact phone</p>
+                      <p className="text-sm text-white mt-1 break-words">{selectedComplaint.contact_phone || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Complaint type</p>
+                      <p className="text-sm text-white mt-1 break-words">{selectedComplaint.complaint_type || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Site name</p>
+                      <p className="text-sm text-white mt-1 break-words">{selectedComplaint.site_name || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Date of incident</p>
+                      <p className="text-sm text-white mt-1 break-words">
+                        {selectedComplaint.date_of_incident ? new Date(selectedComplaint.date_of_incident).toLocaleDateString() : '—'}
+                      </p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Site address</p>
+                      <p className="text-sm text-white mt-1 break-words">{selectedComplaint.site_address || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Preferred contact</p>
+                      <p className="text-sm text-white mt-1 break-words">{selectedComplaint.preferred_contact || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Status</p>
+                      <p className="text-sm text-white mt-1 break-words">{selectedComplaint.status.replace('_', ' ')}</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Description</p>
+                    <p className="text-sm text-gray-200 mt-2 whitespace-pre-wrap">{selectedComplaint.description}</p>
+                  </div>
+
+                  {Array.isArray((selectedComplaint as any).attachments) && (selectedComplaint as any).attachments.length > 0 && (
+                    <div className="border border-[#333333] rounded-xl bg-black/30 p-3">
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <p className="text-xs font-bold text-gray-400 uppercase">Attachment</p>
+                        <a
+                          href={(selectedComplaint as any).attachments[0].publicUrl}
+                          download={(selectedComplaint as any).attachments[0].name}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-bold text-[#F2C200] hover:brightness-110"
+                        >
+                          Download
+                        </a>
+                      </div>
+                      {String((selectedComplaint as any).attachments[0].mime || '').startsWith('video/') ? (
+                        <video
+                          src={(selectedComplaint as any).attachments[0].publicUrl}
+                          controls
+                          className="w-full rounded-lg max-h-[420px] bg-black"
+                        />
+                      ) : (
+                        <img
+                          src={(selectedComplaint as any).attachments[0].publicUrl}
+                          alt={(selectedComplaint as any).attachments[0].name || 'Complaint attachment'}
+                          className="w-full rounded-lg max-h-[420px] object-contain bg-black"
+                          loading="lazy"
+                        />
+                      )}
+                      <p className="mt-2 text-[11px] text-gray-500 truncate">
+                        {(selectedComplaint as any).attachments[0].name}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="border-t border-[#333333]/70 pt-5">
+                    <h3 className="text-sm font-bold text-[#F2C200] mb-2">Admin response</h3>
+                    {selectedComplaint.admin_notes ? (
+                      <p className="text-sm text-gray-200 whitespace-pre-wrap">{selectedComplaint.admin_notes}</p>
+                    ) : (
+                      <p className="text-sm text-gray-500">No response yet. We’ll update you here as soon as our team replies.</p>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedComplaint(null)}
+                      className="px-5 py-2.5 rounded-lg text-sm font-bold bg-[#333333] text-white hover:bg-[#444]"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
