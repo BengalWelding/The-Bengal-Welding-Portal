@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../contexts/AdminContext';
-import { getAllUsers, deleteUser } from '../lib/auth';
+import { getAllUsers, getCachedAllUsers, deleteUser } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import type { StoredUser } from '../lib/auth';
 import { useOutletContext, Navigate } from 'react-router-dom';
@@ -13,15 +13,53 @@ const AdminEmployees: React.FC = () => {
   }
   const { searchQuery, setSearchQuery, openAddEmployeeModal } = useAdmin();
   const [employees, setEmployees] = useState<StoredUser[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = () => getAllUsers().then((users) => setEmployees(users.filter((u) => u.role === 'ADMIN' || u.role === 'ENGINEER')));
+  const refresh = async () => {
+    setRefreshing(true);
+    const users = await getAllUsers();
+    setEmployees(users.filter((u) => u.role === 'ADMIN' || u.role === 'ENGINEER'));
+    setRefreshing(false);
+  };
 
   useEffect(() => {
-    refresh();
-  }, []);
+    // Render cached employees immediately, then refresh in background with fast retry.
+    const cached = getCachedAllUsers().filter((u) => u.role === 'ADMIN' || u.role === 'ENGINEER');
+    if (cached.length > 0) setEmployees(cached);
+
+    let cancelled = false;
+    let timeoutId: number | null = null;
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        timeoutId = window.setTimeout(resolve, ms);
+      });
+
+    const refreshWithRetry = async () => {
+      const delays = [0, 150, 300, 600, 1000, 1500, 2500];
+      for (const d of delays) {
+        if (cancelled) return;
+        if (d) await sleep(d);
+        if (cancelled) return;
+        try {
+          await refresh();
+          return;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (!msg.toLowerCase().includes('not authenticated')) return;
+        }
+      }
+    };
+
+    refreshWithRetry();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+    };
+  }, [user.id]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setCurrentUserId(session?.user?.id ?? null));
@@ -35,7 +73,14 @@ const AdminEmployees: React.FC = () => {
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h1 className="text-2xl font-black text-[#F2C200] tracking-tight">Employees</h1>
+        <div>
+          <h1 className="text-2xl font-black text-[#F2C200] tracking-tight">Employees</h1>
+          {refreshing && (
+            <p className="text-[10px] text-gray-600 font-bold mt-1 uppercase tracking-widest">
+              Refreshing…
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <div className="relative min-w-[200px] max-w-md">
             <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>

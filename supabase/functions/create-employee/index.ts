@@ -79,10 +79,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Upsert profile so RLS policies recognize the new user's role (store lowercase)
+    // Upsert profile for fast admin listing + RLS (store lowercase role)
     const profileRole = (employeeRole as string).toLowerCase();
     await admin.from("profiles").upsert(
-      { id: newUser.user.id, role: profileRole },
+      {
+        id: newUser.user.id,
+        role: profileRole,
+        name: name.trim(),
+        email: newUser.user.email,
+      },
       { onConflict: "id" }
     );
 

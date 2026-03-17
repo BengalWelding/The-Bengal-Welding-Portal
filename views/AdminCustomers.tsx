@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useOutletContext } from 'react-router-dom';
 import type { User } from '../types';
-import { getAllUsers, deleteUser, type StoredUser } from '../lib/auth';
+import { getAllUsers, getCachedAllUsers, deleteUser, updateCustomer, type StoredUser } from '../lib/auth';
+import { supabase } from '../lib/supabase';
 import {
   createCustomerProduct,
   deleteCustomerProduct,
@@ -19,12 +20,24 @@ const AdminCustomers: React.FC = () => {
 
   const [customers, setCustomers] = useState<StoredUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const [selected, setSelected] = useState<StoredUser | null>(null);
   const [products, setProducts] = useState<CustomerProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
+
+  const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
+  const [editCustomerSaving, setEditCustomerSaving] = useState(false);
+  const [editCustomerError, setEditCustomerError] = useState<string | null>(null);
+  const [editCustomerForm, setEditCustomerForm] = useState({
+    id: '',
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+  });
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<CustomerProduct | null>(null);
@@ -54,40 +67,86 @@ const AdminCustomers: React.FC = () => {
     []
   );
 
+  const customersLenRef = useRef(0);
+  useEffect(() => {
+    customersLenRef.current = customers.length;
+  }, [customers.length]);
+
   const loadCustomers = async () => {
-    setLoading(true);
+    const hasRows = customersLenRef.current > 0;
+    if (hasRows) setRefreshing(true);
+    else setLoading(true);
     setError(null);
     try {
       const users = await getAllUsers();
       let customerUsers = users.filter((u) => u.role === 'CUSTOMER');
 
-      // Ensure productsCount reflects the actual number of products per customer.
-      // This does not rely on the edge function including an accurate products_count field.
-      try {
-        const allProducts = await listCustomerProductsForAdmin();
-        const counts = new Map<string, number>();
-        allProducts.forEach((p) => {
-          counts.set(p.customer_id, (counts.get(p.customer_id) || 0) + 1);
-        });
-        customerUsers = customerUsers.map((c) => ({
-          ...c,
-          productsCount: counts.get(c.id) ?? c.productsCount ?? 0,
-        }));
-      } catch {
-        // If product listing fails (e.g. Supabase not configured), fall back to any productsCount coming from getAllUsers.
-      }
-
       setCustomers(customerUsers);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load customers.');
+      // Let the outer retry loop handle the brief "Not authenticated" window post-login.
+      const msg = e instanceof Error ? e.message : 'Failed to load customers.';
+      if (String(msg).toLowerCase().includes('not authenticated')) {
+        throw e;
+      }
+      setError(msg);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    loadCustomers();
-  }, []);
+    let cancelled = false;
+    let timeoutId: number | null = null;
+
+    // Render cached customers immediately (fast UX), then refresh in background.
+    const cached = getCachedAllUsers().filter((u) => u.role === 'CUSTOMER');
+    if (cached.length > 0) {
+      setCustomers(cached);
+      setLoading(false);
+    }
+
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        timeoutId = window.setTimeout(resolve, ms);
+      });
+
+    const loadWithRetry = async () => {
+      // Fast retry for the brief window after logout/login where the app user exists
+      // but Supabase session token isn't usable yet.
+      const delays = [0, 150, 300, 600, 1000, 1500, 2500];
+      for (const d of delays) {
+        if (cancelled) return;
+        if (d) await sleep(d);
+        if (cancelled) return;
+        try {
+          await loadCustomers();
+          return;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (!msg.toLowerCase().includes('not authenticated')) {
+            return;
+          }
+        }
+      }
+      if (!cancelled) {
+        // Keep cached rows visible; only error if we have nothing to show.
+        if (customersLenRef.current === 0) {
+          setLoading(false);
+          setError('Not authenticated');
+        } else {
+          setRefreshing(false);
+        }
+      }
+    };
+
+    loadWithRetry();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+    };
+  }, [user.id]);
 
   const handleDeleteCustomer = async (customer: StoredUser) => {
     if (!window.confirm(`Delete customer "${customer.name}" and all associated data?`)) return;
@@ -133,10 +192,86 @@ const AdminCustomers: React.FC = () => {
     try {
       const list = await listCustomerProductsForAdmin(customer.id);
       setProducts(list);
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === customer.id ? { ...c, productsCount: list.length } : c))
+      );
     } catch {
       setProducts([]);
     } finally {
       setProductsLoading(false);
+    }
+  };
+
+  const openEditCustomer = (customer: StoredUser) => {
+    setEditCustomerError(null);
+    setEditCustomerForm({
+      id: customer.id,
+      name: customer.name || '',
+      email: customer.email || '',
+      phone: customer.phone || '',
+      address: customer.address || '',
+    });
+    setIsEditCustomerOpen(true);
+  };
+
+  const handleSaveCustomer = async () => {
+    if (!editCustomerForm.id) return;
+    if (!editCustomerForm.name.trim()) {
+      setEditCustomerError('Please enter the customer name.');
+      return;
+    }
+    if (!editCustomerForm.email.trim()) {
+      setEditCustomerError('Please enter the customer email.');
+      return;
+    }
+
+    setEditCustomerSaving(true);
+    setEditCustomerError(null);
+    try {
+      const result = await updateCustomer({
+        userId: editCustomerForm.id,
+        name: editCustomerForm.name,
+        email: editCustomerForm.email,
+        phone: editCustomerForm.phone,
+        address: editCustomerForm.address,
+      });
+      if (!result.success) {
+        setEditCustomerError(result.error || 'Failed to update customer.');
+        return;
+      }
+
+      setCustomers((prev) =>
+        prev.map((c) =>
+          c.id === editCustomerForm.id
+            ? {
+                ...c,
+                name: editCustomerForm.name.trim(),
+                email: editCustomerForm.email.trim(),
+                phone: editCustomerForm.phone.trim() || undefined,
+                address: editCustomerForm.address.trim() || undefined,
+              }
+            : c
+        )
+      );
+      setSelected((prev) =>
+        prev?.id === editCustomerForm.id
+          ? {
+              ...prev,
+              name: editCustomerForm.name.trim(),
+              email: editCustomerForm.email.trim(),
+              phone: editCustomerForm.phone.trim() || undefined,
+              address: editCustomerForm.address.trim() || undefined,
+            }
+          : prev
+      );
+
+      setIsEditCustomerOpen(false);
+      // Refresh for any fields the edge function may hydrate (accountNumber/productsCount)
+      loadCustomers();
+    } catch (e) {
+      setEditCustomerError(e instanceof Error ? e.message : 'Failed to update customer.');
+    } finally {
+      setEditCustomerSaving(false);
     }
   };
 
@@ -285,6 +420,11 @@ const AdminCustomers: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-[#F2C200]">Customers</h1>
           <p className="text-gray-500 text-sm">Assign products and manage customer warranties.</p>
+          {refreshing && (
+            <p className="text-[10px] text-gray-600 font-bold mt-1 uppercase tracking-widest">
+              Refreshing…
+            </p>
+          )}
         </div>
         <div className="relative w-full max-w-md">
           <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -345,18 +485,32 @@ const AdminCustomers: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteCustomer(c);
-                        }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase bg-transparent text-red-400 border border-red-800/50 hover:bg-red-900/30"
-                        title="Delete customer"
-                      >
-                        <i className="fas fa-trash-alt" />
-                        Delete
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditCustomer(c);
+                          }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase bg-[#333333] text-[#F2C200] border border-[#333333] hover:bg-[#F2C200] hover:text-black hover:border-[#F2C200] transition-all whitespace-nowrap"
+                          title="Edit customer"
+                        >
+                          <i className="fas fa-pencil-alt" />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteCustomer(c);
+                          }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase bg-transparent text-red-400 border border-red-800/50 hover:bg-red-900/30 whitespace-nowrap"
+                          title="Delete customer"
+                        >
+                          <i className="fas fa-trash-alt" />
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -388,6 +542,7 @@ const AdminCustomers: React.FC = () => {
                   <p className="text-xs text-gray-500 mt-2">{selected.email || 'No email'}</p>
                 </div>
                 <button
+                  type="button"
                   onClick={openCreateModal}
                   className="bg-[#F2C200] text-black px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider hover:brightness-110"
                 >
@@ -587,6 +742,94 @@ const AdminCustomers: React.FC = () => {
                   className="flex-1 py-3 rounded-xl font-black uppercase tracking-widest bg-[#F2C200] text-black hover:brightness-110 disabled:opacity-60"
                 >
                   {saving ? 'Saving...' : editing ? 'Update Product' : 'Assign Product'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isEditCustomerOpen && (
+        <div className="fixed inset-0 z-[320] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-[#111111] border border-[#333333] rounded-2xl overflow-hidden shadow-2xl">
+            <div className="bg-[#F2C200] p-5 text-black flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold">Edit Customer</h3>
+                <p className="text-[10px] font-black uppercase opacity-70 tracking-widest">ID: {editCustomerForm.id}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditCustomerOpen(false)}
+                className="text-black hover:opacity-70"
+                disabled={editCustomerSaving}
+              >
+                <i className="fas fa-times text-lg" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {editCustomerError && (
+                <div className="p-3 rounded-xl bg-red-900/30 border border-red-800/50 text-red-400 text-sm font-bold">
+                  {editCustomerError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Name *</label>
+                <input
+                  type="text"
+                  value={editCustomerForm.name}
+                  onChange={(e) => setEditCustomerForm((p) => ({ ...p, name: e.target.value }))}
+                  className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Email *</label>
+                <input
+                  type="email"
+                  value={editCustomerForm.email}
+                  onChange={(e) => setEditCustomerForm((p) => ({ ...p, email: e.target.value }))}
+                  className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Phone</label>
+                <input
+                  type="tel"
+                  value={editCustomerForm.phone}
+                  onChange={(e) => setEditCustomerForm((p) => ({ ...p, phone: e.target.value }))}
+                  className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Address</label>
+                <textarea
+                  rows={3}
+                  value={editCustomerForm.address}
+                  onChange={(e) => setEditCustomerForm((p) => ({ ...p, address: e.target.value }))}
+                  className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none resize-none font-medium text-sm leading-relaxed"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditCustomerOpen(false)}
+                  disabled={editCustomerSaving}
+                  className="flex-1 py-3 rounded-xl font-black uppercase tracking-widest bg-[#333333] text-white hover:bg-[#444] disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveCustomer}
+                  disabled={editCustomerSaving}
+                  className="flex-1 py-3 rounded-xl font-black uppercase tracking-widest bg-[#F2C200] text-black hover:brightness-110 disabled:opacity-60"
+                >
+                  {editCustomerSaving ? 'Saving…' : 'Save'}
                 </button>
               </div>
             </div>

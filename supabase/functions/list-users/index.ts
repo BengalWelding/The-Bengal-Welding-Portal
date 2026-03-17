@@ -74,27 +74,14 @@ Deno.serve(async (req) => {
       profileMap.set(p.id, { account_number: p.account_number ?? null });
     });
 
-    // Fetch product counts per customer
-    const { data: productRows } = await admin
-      .from("customer_products")
-      .select("customer_id")
-      .in("customer_id", ids);
-
-    const countMap = new Map<string, number>();
-    (productRows || []).forEach((row: any) => {
-      const current = countMap.get(row.customer_id) || 0;
-      countMap.set(row.customer_id, current + 1);
-    });
-
     const list = users.map((u) => {
       const profile = profileMap.get(u.id);
-      const productsCount = countMap.get(u.id) ?? 0;
       return {
         id: u.id,
         email: u.email,
         user_metadata: u.user_metadata,
         account_number: profile?.account_number || null,
-        products_count: productsCount,
+        // products_count intentionally omitted for performance; fetch products on-demand per customer.
       };
     });
 

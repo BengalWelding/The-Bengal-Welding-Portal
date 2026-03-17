@@ -11,6 +11,27 @@ export interface StoredUser extends User {
   productsCount?: number;
 }
 
+const USERS_CACHE_KEY = 'bengal_users_cache_v1';
+
+export function getCachedAllUsers(): StoredUser[] {
+  try {
+    const raw = localStorage.getItem(USERS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { users?: StoredUser[] };
+    return Array.isArray(parsed?.users) ? parsed.users : [];
+  } catch {
+    return [];
+  }
+}
+
+function setCachedAllUsers(users: StoredUser[]): void {
+  try {
+    localStorage.setItem(USERS_CACHE_KEY, JSON.stringify({ users, cachedAt: Date.now() }));
+  } catch {
+    // ignore
+  }
+}
+
 function mapAuthUserToAppUser(raw: { id: string; email?: string; user_metadata?: Record<string, unknown> }): User | null {
   const meta = raw.user_metadata || {};
   return {
@@ -139,35 +160,33 @@ export async function getSessionUser(): Promise<User | null> {
 }
 
 export async function getAllUsers(): Promise<StoredUser[]> {
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as unknown as string;
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) return [];
-  const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/list-users`, {
-    headers: {
-      apikey: ANON_KEY,
-      Authorization: `Bearer ${session.access_token}`,
-    },
+  if (!session?.access_token) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, role, account_number, name, email, phone, address, products_count')
+    .order('account_number', { ascending: true, nullsFirst: false });
+
+  if (error) throw new Error(error.message || 'Failed to load users');
+
+  const mapped: StoredUser[] = (data || []).map((p: any) => {
+    const r = String(p.role || 'customer').toUpperCase();
+    const role: UserRole = r === 'ADMIN' ? 'ADMIN' : r === 'ENGINEER' ? 'ENGINEER' : 'CUSTOMER';
+    return {
+      id: p.id,
+      name: (p.name as string) || (p.email as string) || '',
+      email: (p.email as string) || '',
+      role,
+      phone: (p.phone as string) || undefined,
+      address: (p.address as string) || undefined,
+      accountNumber: (p.account_number as string) ?? null,
+      productsCount: typeof p.products_count === 'number' ? p.products_count : 0,
+    };
   });
-  if (!res.ok) return [];
-  const json = await res.json().catch(() => ({}));
-  const list = json.users || [];
-  return list.map((u: {
-    id: string;
-    email?: string;
-    user_metadata?: Record<string, unknown>;
-    account_number?: string | null;
-    products_count?: number;
-  }) => ({
-    id: u.id,
-    name: (u.user_metadata?.name as string) || u.email || '',
-    email: u.email || '',
-    role: (u.user_metadata?.role as UserRole) || 'CUSTOMER',
-    phone: u.user_metadata?.phone as string | undefined,
-    address: u.user_metadata?.address as string | undefined,
-    accountNumber: u.account_number ?? null,
-    productsCount: typeof u.products_count === 'number' ? u.products_count : 0,
-  }));
+
+  setCachedAllUsers(mapped);
+  return mapped;
 }
 
 export async function registerEmployee(data: {
@@ -244,6 +263,50 @@ export async function createCustomer(data: {
     name: (meta.name as string) || u.email || '',
     email: u.email || '',
     role: 'CUSTOMER',
+    phone: meta.phone as string | undefined,
+    address: meta.address as string | undefined,
+  };
+  return { success: true, user };
+}
+
+export async function updateCustomer(data: {
+  userId: string;
+  name: string;
+  email: string;
+  phone?: string;
+  address?: string;
+}): Promise<{ success: boolean; user?: User; error?: string }> {
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) return { success: false, error: 'Not authenticated' };
+
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/update-customer`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: ANON_KEY,
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      userId: data.userId,
+      name: data.name.trim(),
+      email: data.email.trim().toLowerCase(),
+      phone: data.phone?.trim() || '',
+      address: data.address?.trim() || '',
+    }),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) return { success: false, error: json.error || `Request failed (${res.status})` };
+  const u = json.user;
+  if (!u) return { success: false, error: 'No user returned' };
+  const meta = u.user_metadata || {};
+  const user: User = {
+    id: u.id,
+    name: (meta.name as string) || u.email || '',
+    email: u.email || '',
+    role: (meta.role as UserRole) || 'CUSTOMER',
     phone: meta.phone as string | undefined,
     address: meta.address as string | undefined,
   };

@@ -92,9 +92,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Upsert profile for RLS
+    // Upsert profile for fast admin listing + RLS
     await admin.from("profiles").upsert(
-      { id: inviteData.user.id, role: "customer" },
+      {
+        id: inviteData.user.id,
+        role: "customer",
+        name: String(name).trim(),
+        email: inviteData.user.email,
+        phone: (phone && String(phone).trim()) || "",
+        address: (address && String(address).trim()) || "",
+      },
       { onConflict: "id" }
     );
 
