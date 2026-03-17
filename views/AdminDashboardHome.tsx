@@ -175,14 +175,26 @@ const AdminDashboardHome: React.FC = () => {
     [overdueJobsDisplay, installationSiteIdSet]
   );
 
+  const overdueSiteIds = useMemo(
+    () =>
+      new Set(
+        overdueJobsDisplay
+          .map((j) => j.customerId)
+          .filter((id): id is string => !!id && installationSiteIdSet.has(id))
+      ),
+    [overdueJobsDisplay, installationSiteIdSet]
+  );
+
   const dueSoonSiteCount = useMemo(
     () =>
       new Set(
         dueSoonJobsDisplay
           .map((j) => j.customerId)
           .filter((id): id is string => !!id && installationSiteIdSet.has(id))
+          // If a site has any overdue job, it should be counted as overdue only.
+          .filter((id) => !overdueSiteIds.has(id))
       ).size,
-    [dueSoonJobsDisplay, installationSiteIdSet]
+    [dueSoonJobsDisplay, installationSiteIdSet, overdueSiteIds]
   );
 
   const recentCertificates = jobs

@@ -178,15 +178,19 @@ const AdminSites: React.FC = () => {
     [overdueJobsForFilter, installationSiteIdSet]
   );
 
-  const dueSoonSiteIds = useMemo(
-    () =>
-      new Set<string>(
-        dueSoonJobsForFilter
-          .map((j) => j.customerId)
-          .filter((id): id is string => !!id && installationSiteIdSet.has(id))
-      ),
-    [dueSoonJobsForFilter, installationSiteIdSet]
-  );
+  const dueSoonSiteIds = useMemo(() => {
+    // A site should never be counted in both buckets. If any job is overdue,
+    // show it as overdue (and exclude it from due-soon).
+    const ids = new Set<string>();
+    for (const job of dueSoonJobsForFilter) {
+      const id = job.customerId;
+      if (!id) continue;
+      if (!installationSiteIdSet.has(id)) continue;
+      if (overdueSiteIds.has(id)) continue;
+      ids.add(id);
+    }
+    return ids;
+  }, [dueSoonJobsForFilter, installationSiteIdSet, overdueSiteIds]);
 
   const filteredSites = sites.filter((s) => {
     if (!matchesSearch(s)) return false;
