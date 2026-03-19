@@ -232,7 +232,7 @@ export async function registerEmployee(data: {
 
 export async function createCustomer(data: {
   name: string;
-  email: string;
+  email?: string;
   phone?: string;
   address?: string;
 }): Promise<{ success: boolean; user?: User; error?: string }> {
@@ -249,7 +249,7 @@ export async function createCustomer(data: {
     },
     body: JSON.stringify({
       name: data.name.trim(),
-      email: data.email.trim().toLowerCase(),
+      email: data.email?.trim() ? data.email.trim().toLowerCase() : '',
       phone: data.phone?.trim() || '',
       address: data.address?.trim() || '',
       redirectTo: `${window.location.origin}${window.location.pathname || ''}#/set-password`,

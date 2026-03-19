@@ -50,15 +50,11 @@ const AdminAddCustomer: React.FC = () => {
       setError('Please enter the customer name.');
       return;
     }
-    if (!form.email.trim()) {
-      setError('Please enter the customer email.');
-      return;
-    }
     setLoading(true);
     try {
       const result = await createCustomer({
         name: form.name.trim(),
-        email: form.email.trim(),
+        email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
         address: form.address.trim() || undefined,
       });
@@ -160,7 +156,7 @@ const AdminAddCustomer: React.FC = () => {
       <header>
         <h1 className="text-2xl font-bold text-[#F2C200]">Add Customer</h1>
         <p className="text-gray-500 text-sm mt-1">
-          Add a new customer and send them an email to register their password.
+          Add a new customer now and update contact details anytime.
         </p>
       </header>
 
@@ -184,7 +180,7 @@ const AdminAddCustomer: React.FC = () => {
           {success && (
             <div className="mb-4 p-3 rounded-xl bg-green-900/30 border border-green-800/50 text-green-400 text-sm">
               <i className="fas fa-check-circle mr-2" />
-              Customer added. An email has been sent to them to set their password.
+              Customer has been successfully added.
             </div>
           )}
           {attachmentWarning && (
@@ -206,7 +202,7 @@ const AdminAddCustomer: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Email *</label>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Email (optional)</label>
               <input
                 type="email"
                 value={form.email}
@@ -214,7 +210,7 @@ const AdminAddCustomer: React.FC = () => {
                 placeholder="customer@example.com"
                 className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none"
               />
-              <p className="text-[10px] text-gray-500 mt-1">They will receive an invite email to set their password.</p>
+              <p className="text-[10px] text-gray-500 mt-1">Add email now if available, or leave blank and update later.</p>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Phone</label>
@@ -272,7 +268,7 @@ const AdminAddCustomer: React.FC = () => {
               ) : (
                 <>
                   <i className="fas fa-user-plus mr-2" />
-                  Add Customer & Send Invite
+                  Add Customer
                 </>
               )}
             </button>

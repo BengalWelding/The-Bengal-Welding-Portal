@@ -56,22 +56,25 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const { name, email, phone, address } = body;
-    if (!name || !email) {
-      return new Response(JSON.stringify({ error: "Missing name or email" }), {
+    if (!name) {
+      return new Response(JSON.stringify({ error: "Missing name" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const trimmedEmail = String(email).trim().toLowerCase();
+    const trimmedName = String(name).trim();
+    const providedEmail = String(email ?? "").trim().toLowerCase();
+    const userEmail = providedEmail || `customer-${crypto.randomUUID()}@no-email.local`;
 
-    // Use inviteUserByEmail - Supabase sends invite email; user sets password via invite link
-    const redirectTo = (body.redirectTo as string) || (Deno.env.get("SITE_URL") || "http://localhost:5173") + "#/set-password";
-
-    const { data: inviteData, error } = await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
-      redirectTo,
-      data: {
-        name: String(name).trim(),
+    // Create auth user directly so admins can add customers without email-delivery limits.
+    const tempPassword = `Tmp-${crypto.randomUUID()}-A1!`;
+    const { data: createdData, error } = await admin.auth.admin.createUser({
+      email: userEmail,
+      password: tempPassword,
+      email_confirm: true,
+      user_metadata: {
+        name: trimmedName,
         role: "CUSTOMER",
         phone: (phone && String(phone).trim()) || "",
         address: (address && String(address).trim()) || "",
@@ -85,8 +88,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!inviteData?.user) {
-      return new Response(JSON.stringify({ error: "Invite failed" }), {
+    if (!createdData?.user) {
+      return new Response(JSON.stringify({ error: "User creation failed" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -95,10 +98,10 @@ Deno.serve(async (req) => {
     // Upsert profile for fast admin listing + RLS
     await admin.from("profiles").upsert(
       {
-        id: inviteData.user.id,
+        id: createdData.user.id,
         role: "customer",
-        name: String(name).trim(),
-        email: inviteData.user.email,
+        name: trimmedName,
+        email: providedEmail || null,
         phone: (phone && String(phone).trim()) || "",
         address: (address && String(address).trim()) || "",
       },
@@ -108,9 +111,9 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         user: {
-          id: inviteData.user.id,
-          email: inviteData.user.email,
-          user_metadata: inviteData.user.user_metadata,
+          id: createdData.user.id,
+          email: providedEmail || "",
+          user_metadata: createdData.user.user_metadata,
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
