@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAdmin } from '../contexts/AdminContext';
-import type { Job } from '../types';
-import { Link, useLocation } from 'react-router-dom';
+import type { Job, User } from '../types';
+import { Link, useLocation, useOutletContext } from 'react-router-dom';
 import {
   listInstallationSites,
   createInstallationSite,
@@ -17,9 +17,12 @@ const MAX_FILE_MB = 10;
 
 const AdminSites: React.FC = () => {
   const { jobs, setJobs, saveJob, refreshJobs } = useAdmin();
+  const { user } = useOutletContext<{ user: User }>();
+  const canDeleteSite = user.role === 'ADMIN';
   const location = useLocation();
   const [sites, setSites] = useState<InstallationSite[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSite, setEditingSite] = useState<InstallationSite | null>(null);
@@ -75,9 +78,14 @@ const AdminSites: React.FC = () => {
 
   const loadSites = () => {
     setLoading(true);
+    setLoadError(null);
     listInstallationSites()
       .then(setSites)
-      .catch(() => setSites([]))
+      .catch((error) => {
+        setSites([]);
+        const message = error instanceof Error ? error.message : 'Failed to load sites';
+        setLoadError(message);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -541,6 +549,11 @@ const AdminSites: React.FC = () => {
       </div>
 
       <div className="bg-[#111111] rounded-2xl border border-[#333333] overflow-x-auto">
+        {loadError && (
+          <div className="mx-4 mt-4 px-4 py-3 rounded-lg bg-red-900/20 border border-red-800/40 text-red-300 text-sm font-bold">
+            Unable to load sites: {loadError}
+          </div>
+        )}
         {loading ? (
           <div className="p-12 text-center text-gray-500 font-bold text-sm">Loading...</div>
         ) : (
@@ -627,14 +640,16 @@ const AdminSites: React.FC = () => {
                         <i className="fas fa-pen text-[10px]"></i>
                         Edit
                       </button>
-                      <button
-                        onClick={() => handleDelete(s)}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-red-900/40 text-red-400 border border-red-800/50 hover:bg-red-800/40 transition-all"
-                        title="Delete"
-                      >
-                        <i className="fas fa-trash-alt text-[10px]"></i>
-                        Delete
-                      </button>
+                      {canDeleteSite && (
+                        <button
+                          onClick={() => handleDelete(s)}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-red-900/40 text-red-400 border border-red-800/50 hover:bg-red-800/40 transition-all"
+                          title="Delete"
+                        >
+                          <i className="fas fa-trash-alt text-[10px]"></i>
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
