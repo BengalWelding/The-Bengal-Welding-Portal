@@ -10,7 +10,7 @@ export const COLORS = {
 
 export const LOGO = (className: string = "w-10 h-10") => (
   <img 
-    src="bengalpng.png" 
+    src="/products/bengalpng.png" 
     alt="Bengal Welding Logo" 
     className={`${className} object-contain`}
     onError={(e) => {
