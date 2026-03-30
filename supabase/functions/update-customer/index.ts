@@ -50,6 +50,22 @@ Deno.serve(async (req) => {
     const emailProvided = emailRaw.length > 0;
     const phone = String(body.phone ?? "").trim();
     const address = String(body.address ?? "").trim();
+    const companyName = String(body.company_name ?? body.companyName ?? "").trim();
+    const vatNumber = String(body.vat_number ?? body.vatNumber ?? "").trim();
+    const rawAccountType = String(body.account_type ?? body.accountType ?? "").trim().toLowerCase();
+    const accountType = rawAccountType === "credit" || rawAccountType === "cash" ? rawAccountType : null;
+    const rawCustomerType = String(body.customer_type ?? body.customerType ?? "").trim().toLowerCase();
+    const customerType = rawCustomerType === "trade" || rawCustomerType === "retail" ? rawCustomerType : null;
+    const completed = Boolean(body.completed ?? false);
+    const rawBalance = body.balance;
+    const balanceParsed =
+      typeof rawBalance === "number"
+        ? rawBalance
+        : typeof rawBalance === "string" && rawBalance.trim() !== ""
+          ? Number(rawBalance)
+          : 0;
+    if (!Number.isFinite(balanceParsed)) return json(400, { error: "Invalid balance" });
+    const balance = Number(balanceParsed);
 
     if (!name) return json(400, { error: "Missing name" });
     const email = emailProvided ? emailRaw.toLowerCase() : null;
@@ -63,6 +79,12 @@ Deno.serve(async (req) => {
       name,
       phone,
       address,
+      company_name: companyName,
+      vat_number: vatNumber,
+      account_type: accountType,
+      balance,
+      customer_type: customerType,
+      completed,
     };
 
     const updateAuthPayload: Record<string, unknown> = {
@@ -74,7 +96,17 @@ Deno.serve(async (req) => {
     if (updateErr) return json(400, { error: updateErr.message });
 
     // Keep profiles in sync (fast admin listing) + job rows in sync.
-    const profileUpdate: Record<string, unknown> = { name, phone, address };
+    const profileUpdate: Record<string, unknown> = {
+      name,
+      phone,
+      address,
+      company_name: companyName,
+      vat_number: vatNumber,
+      account_type: accountType,
+      balance,
+      customer_type: customerType,
+      completed,
+    };
     if (emailProvided) profileUpdate.email = email;
     await admin.from("profiles").update(profileUpdate).eq("id", userId);
 

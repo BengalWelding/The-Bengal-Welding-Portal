@@ -23,6 +23,7 @@ const AdminCustomers: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [customerFilter, setCustomerFilter] = useState<'all' | 'trade'>('all');
 
   const [selected, setSelected] = useState<StoredUser | null>(null);
   const [products, setProducts] = useState<CustomerProduct[]>([]);
@@ -37,6 +38,12 @@ const AdminCustomers: React.FC = () => {
     email: '',
     phone: '',
     address: '',
+    companyName: '',
+    vatNumber: '',
+    accountType: '' as '' | 'credit' | 'cash',
+    balance: '0',
+    customerType: '' as '' | 'trade' | 'retail',
+    completed: false,
   });
   const [editCustomerAttachments, setEditCustomerAttachments] = useState<CustomerAttachment[]>([]);
   const [attachmentsUploading, setAttachmentsUploading] = useState(false);
@@ -193,16 +200,36 @@ const AdminCustomers: React.FC = () => {
     const q = search.trim().toLowerCase();
     if (!q) return customers;
     return customers.filter((c) => {
+      const accountTypeLabel = c.accountType === 'credit' ? 'credit' : c.accountType === 'cash' ? 'cash' : '';
+      const customerTypeLabel = c.customerType === 'trade' ? 'trade' : c.customerType === 'retail' ? 'retail' : '';
       return (
         (c.accountNumber || '').toLowerCase().includes(q) ||
         c.name.toLowerCase().includes(q) ||
         (c.email || '').toLowerCase().includes(q) ||
         (c.phone || '').toLowerCase().includes(q) ||
         (c.address || '').toLowerCase().includes(q) ||
+        (c.companyName || '').toLowerCase().includes(q) ||
+        (c.vatNumber || '').toLowerCase().includes(q) ||
+        accountTypeLabel.includes(q) ||
+        customerTypeLabel.includes(q) ||
+        String(c.balance ?? '').toLowerCase().includes(q) ||
         c.id.toLowerCase().includes(q)
       );
     });
   }, [customers, search]);
+
+  const filteredByType = useMemo(() => {
+    const base = customerFilter === 'trade' ? filtered.filter((c) => c.customerType === 'trade') : filtered;
+    return base.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+  }, [customerFilter, filtered]);
+
+  const totalCustomerBalance = useMemo(() => {
+    return customers.reduce((sum, c) => {
+      const b = c.balance;
+      if (typeof b === 'number' && Number.isFinite(b)) return sum + b;
+      return sum;
+    }, 0);
+  }, [customers]);
 
   const loadCustomerProducts = async (customer: StoredUser) => {
     setSelected(customer);
@@ -261,6 +288,12 @@ const AdminCustomers: React.FC = () => {
       email: customer.email || '',
       phone: customer.phone || '',
       address: customer.address || '',
+      companyName: customer.companyName || '',
+      vatNumber: customer.vatNumber || '',
+      accountType: customer.accountType || '',
+      balance: typeof customer.balance === 'number' && Number.isFinite(customer.balance) ? String(customer.balance) : '0',
+      customerType: customer.customerType || '',
+      completed: Boolean(customer.completed),
     });
     setEditCustomerAttachments(customer.attachments ?? []);
     setAttachmentsError(null);
@@ -347,6 +380,28 @@ const AdminCustomers: React.FC = () => {
     }
   };
 
+  const handleDownloadAttachment = async (
+    e: React.MouseEvent<HTMLButtonElement>,
+    attachment: CustomerAttachment
+  ) => {
+    e.stopPropagation();
+    try {
+      const response = await fetch(attachment.url);
+      if (!response.ok) throw new Error('Failed to download attachment');
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = attachment.name || 'attachment';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      setAttachmentsError('Failed to download attachment.');
+    }
+  };
+
   const handleSaveCustomer = async () => {
     if (!editCustomerForm.id) return;
     if (!editCustomerForm.name.trim()) {
@@ -363,6 +418,12 @@ const AdminCustomers: React.FC = () => {
         email: editCustomerForm.email,
         phone: editCustomerForm.phone,
         address: editCustomerForm.address,
+        companyName: editCustomerForm.companyName,
+        vatNumber: editCustomerForm.vatNumber,
+        accountType: editCustomerForm.accountType || null,
+        balance: Number.isFinite(Number(editCustomerForm.balance)) ? Number(editCustomerForm.balance) : 0,
+        customerType: editCustomerForm.customerType || null,
+        completed: editCustomerForm.completed,
       });
       if (!result.success) {
         setEditCustomerError(result.error || 'Failed to update customer.');
@@ -379,6 +440,12 @@ const AdminCustomers: React.FC = () => {
                 email: editCustomerForm.email.trim() ? editCustomerForm.email.trim() : c.email,
                 phone: editCustomerForm.phone.trim() || undefined,
                 address: editCustomerForm.address.trim() || undefined,
+                companyName: editCustomerForm.companyName.trim() || null,
+                vatNumber: editCustomerForm.vatNumber.trim() || null,
+                accountType: editCustomerForm.accountType || null,
+                balance: Number.isFinite(Number(editCustomerForm.balance)) ? Number(editCustomerForm.balance) : 0,
+                customerType: editCustomerForm.customerType || null,
+                completed: editCustomerForm.completed,
               }
             : c
         )
@@ -391,6 +458,12 @@ const AdminCustomers: React.FC = () => {
               email: editCustomerForm.email.trim() ? editCustomerForm.email.trim() : prev.email,
               phone: editCustomerForm.phone.trim() || undefined,
               address: editCustomerForm.address.trim() || undefined,
+              companyName: editCustomerForm.companyName.trim() || null,
+              vatNumber: editCustomerForm.vatNumber.trim() || null,
+              accountType: editCustomerForm.accountType || null,
+              balance: Number.isFinite(Number(editCustomerForm.balance)) ? Number(editCustomerForm.balance) : 0,
+              customerType: editCustomerForm.customerType || null,
+              completed: editCustomerForm.completed,
             }
           : prev
       );
@@ -556,17 +629,45 @@ const AdminCustomers: React.FC = () => {
             </p>
           )}
         </div>
-        <div className="relative w-full max-w-md">
-          <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by account number or business details..."
-            className="w-full pl-10 pr-4 py-2 bg-[#111111] border border-[#333333] rounded-full text-sm text-white focus:outline-none focus:border-[#F2C200]"
-          />
+        <div className="flex w-full max-w-2xl gap-3">
+          <div className="relative flex-1">
+            <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by account number or business details..."
+              className="w-full pl-10 pr-4 py-2 bg-[#111111] border border-[#333333] rounded-full text-sm text-white focus:outline-none focus:border-[#F2C200]"
+            />
+          </div>
+          <select
+            value={customerFilter}
+            onChange={(e) => setCustomerFilter(e.target.value === 'trade' ? 'trade' : 'all')}
+            className="px-4 py-2 bg-[#111111] border border-[#333333] rounded-full text-sm text-white focus:outline-none focus:border-[#F2C200]"
+          >
+            <option value="all">All Customers</option>
+            <option value="trade">Trade Customers</option>
+          </select>
         </div>
       </header>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-[#111111] p-6 rounded-2xl border border-[#333333] flex items-center gap-4 hover:border-[#F2C200] transition-colors">
+          <div className="w-12 h-12 rounded-xl bg-[#F2C200]/10 flex items-center justify-center text-[#F2C200]">
+            <i className="fas fa-scale-balanced text-xl" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-tighter">Balance</p>
+            <p className="text-2xl font-black text-white tabular-nums">
+              £
+              {totalCustomerBalance.toLocaleString('en-GB', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </p>
+          </div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         <section className="lg:col-span-3 bg-[#111111] rounded-2xl border border-[#333333] overflow-x-auto overflow-y-auto max-h-[calc(100dvh-260px)]">
@@ -575,18 +676,22 @@ const AdminCustomers: React.FC = () => {
           ) : error ? (
             <div className="p-10 text-center text-red-400 font-bold text-sm">{error}</div>
           ) : (
-            <table className="w-full text-left min-w-[640px]">
+            <table className="w-full text-left min-w-[1040px]">
               <thead className="bg-[#1A1A1A] border-b border-[#333333]">
                 <tr>
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Account</th>
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Business Name</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Company Name</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">VAT Number</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Account Type</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Balance</th>
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Contact</th>
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-center">Products</th>
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#333333]">
-                {filtered.map((c) => (
+                {filteredByType.map((c) => (
                   <tr
                     key={c.id}
                     onClick={() => loadCustomerProducts(c)}
@@ -605,6 +710,12 @@ const AdminCustomers: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-white font-bold">{c.name}</td>
+                    <td className="px-6 py-4 text-xs text-gray-200 font-bold">{c.companyName || '-'}</td>
+                    <td className="px-6 py-4 text-xs text-gray-300 font-bold">{c.vatNumber || '-'}</td>
+                    <td className="px-6 py-4 text-xs text-gray-200 font-bold uppercase">{c.accountType || '-'}</td>
+                    <td className="px-6 py-4 text-right text-xs text-gray-200 font-bold">
+                      {typeof c.balance === 'number' ? c.balance.toFixed(2) : '-'}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="text-xs text-gray-300 font-bold">{c.phone || 'No phone'}</div>
                       <div className="text-[10px] text-gray-500">{c.email || 'No email'}</div>
@@ -644,9 +755,9 @@ const AdminCustomers: React.FC = () => {
                     </td>
                   </tr>
                 ))}
-                {!loading && filtered.length === 0 && (
+                {!loading && filteredByType.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500 font-bold text-sm">
+                    <td colSpan={9} className="px-6 py-12 text-center text-gray-500 font-bold text-sm">
                       No customers found.
                     </td>
                   </tr>
@@ -943,6 +1054,69 @@ const AdminCustomers: React.FC = () => {
                   className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none resize-none font-medium text-sm leading-relaxed"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Company Name</label>
+                <input
+                  type="text"
+                  value={editCustomerForm.companyName}
+                  onChange={(e) => setEditCustomerForm((p) => ({ ...p, companyName: e.target.value }))}
+                  className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none font-bold"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">VAT Number</label>
+                <input
+                  type="text"
+                  value={editCustomerForm.vatNumber}
+                  onChange={(e) => setEditCustomerForm((p) => ({ ...p, vatNumber: e.target.value }))}
+                  className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none font-bold"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Account Type</label>
+                  <select
+                    value={editCustomerForm.accountType}
+                    onChange={(e) =>
+                      setEditCustomerForm((p) => ({
+                        ...p,
+                        accountType: e.target.value === 'credit' || e.target.value === 'cash' ? e.target.value : '',
+                      }))
+                    }
+                    className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none font-bold"
+                  >
+                    <option value="">None</option>
+                    <option value="credit">Credit</option>
+                    <option value="cash">Cash</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Balance</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editCustomerForm.balance}
+                    onChange={(e) => setEditCustomerForm((p) => ({ ...p, balance: e.target.value }))}
+                    className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Customer Type</label>
+                  <select
+                    value={editCustomerForm.customerType}
+                    onChange={(e) =>
+                      setEditCustomerForm((p) => ({
+                        ...p,
+                        customerType: e.target.value === 'trade' ? e.target.value : '',
+                      }))
+                    }
+                    className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none font-bold"
+                  >
+                    <option value="">None</option>
+                    <option value="trade">Trade</option>
+                  </select>
+                </div>
+              </div>
 
               <div className="pt-4 border-t border-[#333333] space-y-3">
                 <div className="flex items-start justify-between gap-3">
@@ -987,32 +1161,42 @@ const AdminCustomers: React.FC = () => {
                         key={a.path}
                         className="relative group aspect-square rounded-lg overflow-hidden border border-[#333333] hover:border-[#F2C200] transition-colors bg-black"
                       >
-                        <button
-                          type="button"
-                          onClick={() => setAttachmentPreview(a)}
-                          className="absolute inset-0 w-full h-full"
-                          title="View attachment"
-                        >
-                          {a.kind === 'image' ? (
-                            <img src={a.url} alt={a.name} className="w-full h-full object-cover" />
-                          ) : a.kind === 'video' ? (
-                            <video src={a.url} className="w-full h-full object-cover" muted />
-                          ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center px-2 text-center">
-                              <i
-                                className={`fas ${
-                                  a.kind === 'pdf' ? 'fa-file-pdf text-red-400' : 'fa-paperclip text-gray-400'
-                                } text-2xl mb-2`}
-                              />
-                              <span className="text-[10px] text-gray-300 font-bold line-clamp-2">
-                                {a.name}
-                              </span>
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-[10px] font-bold text-white">
-                            View
+                        {a.kind === 'image' ? (
+                          <img src={a.url} alt={a.name} className="w-full h-full object-cover" />
+                        ) : a.kind === 'video' ? (
+                          <video src={a.url} className="w-full h-full object-cover" muted />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center px-2 text-center">
+                            <i
+                              className={`fas ${
+                                a.kind === 'pdf' ? 'fa-file-pdf text-red-400' : 'fa-paperclip text-gray-400'
+                              } text-2xl mb-2`}
+                            />
+                            <span className="text-[10px] text-gray-300 font-bold line-clamp-2">
+                              {a.name}
+                            </span>
                           </div>
-                        </button>
+                        )}
+                        <div className="absolute right-1 bottom-1 z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => setAttachmentPreview(a)}
+                            className="w-6 h-6 rounded-full bg-black/80 text-white text-[10px] flex items-center justify-center"
+                            title="View attachment"
+                          >
+                            <i className="fas fa-eye" />
+                          </button>
+                          <button
+                            type="button"
+                            className="w-6 h-6 rounded-full bg-black/80 text-white text-[10px] flex items-center justify-center"
+                            title="Download attachment"
+                            onClick={(e) => {
+                              void handleDownloadAttachment(e, a);
+                            }}
+                          >
+                            <i className="fas fa-download" />
+                          </button>
+                        </div>
                         <button
                           type="button"
                           onClick={() => handleRemoveAttachment(a)}
@@ -1085,33 +1269,6 @@ const AdminCustomers: React.FC = () => {
                 </p>
               </div>
             )}
-
-            <div className="absolute bottom-3 left-3 flex gap-2">
-              <a
-                href={attachmentPreview.url}
-                download={attachmentPreview.name || 'attachment'}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-black/70 text-xs font-bold text-white hover:bg-black"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <i className="fas fa-download text-xs" />
-                <span>{attachmentPreview.kind === 'pdf' ? 'Download PDF' : 'Download'}</span>
-              </a>
-              {attachmentPreview.kind === 'video' && (
-                <a
-                  href={attachmentPreview.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-black/70 text-xs font-bold text-white hover:bg-black"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <i className="fas fa-up-right-from-square text-xs" />
-                  <span>Open</span>
-                </a>
-              )}
-            </div>
-
             <button
               onClick={() => setAttachmentPreview(null)}
               className="absolute top-2 right-2 bg-black/70 hover:bg-black text-white rounded-full p-2"

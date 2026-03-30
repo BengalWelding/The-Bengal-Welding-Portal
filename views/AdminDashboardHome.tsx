@@ -4,9 +4,9 @@ import { Job } from '../types';
 import { useAdmin } from '../contexts/AdminContext';
 import { listServiceRequestsForAdmin } from '../lib/serviceRequests';
 import { listInstallationSites } from '../lib/installationSites';
-import { listSiteSurveys } from '../lib/siteSurveys';
 
 const TR19_REPORTS_STORAGE_KEY = 'bengal_tr19_reports';
+const SITE_STATUS_OVERRIDES_KEY = 'bengal_site_status_overrides';
 
 interface ScheduleSiteData {
   id: string;
@@ -83,7 +83,17 @@ const AdminDashboardHome: React.FC = () => {
   const [startTime, setStartTime] = useState('08:00');
   const [duration, setDuration] = useState(2);
   const [jobType, setJobType] = useState('TR19 Grease Clean (Kitchen Extract)');
-  const [siteCount, setSiteCount] = useState(0);
+  const [allDetailsJob, setAllDetailsJob] = useState<Job | null>(null);
+  const [siteStatusOverrides, setSiteStatusOverrides] = useState<Record<string, 'OVERDUE' | 'DUE_SOON' | 'ACTIVE_SITE' | 'COMPLETED'>>(() => {
+    try {
+      const raw = localStorage.getItem(SITE_STATUS_OVERRIDES_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as Record<string, 'OVERDUE' | 'DUE_SOON' | 'ACTIVE_SITE' | 'COMPLETED'>;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
 
   const JOB_TYPES = [
     'TR19 Grease Clean (Kitchen Extract)',
@@ -109,22 +119,50 @@ const AdminDashboardHome: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    Promise.all([
-      listInstallationSites(),
-      // Only submitted TR19 sites count towards "Active Sites".
-      listSiteSurveys('submitted'),
-    ])
-      .then(([installationSites, submittedTr19Sites]) => {
+    listInstallationSites()
+      .then((installationSites) => {
         setInstallationSiteIds(installationSites.map((s) => s.id));
-        // Keep "Active Sites" as a single metric while preserving the existing /dashboard/sites link.
-        // No duplication risk here because these come from different entities/tables.
-        setSiteCount(installationSites.length + submittedTr19Sites.length);
       })
       .catch(() => {
         // If Supabase is misconfigured/offline, keep dashboard functional with safe defaults.
         setInstallationSiteIds([]);
-        setSiteCount(0);
       });
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== SITE_STATUS_OVERRIDES_KEY) return;
+      try {
+        const parsed = event.newValue
+          ? (JSON.parse(event.newValue) as Record<string, 'OVERDUE' | 'DUE_SOON' | 'ACTIVE_SITE' | 'COMPLETED'>)
+          : {};
+        setSiteStatusOverrides(parsed && typeof parsed === 'object' ? parsed : {});
+      } catch {
+        setSiteStatusOverrides({});
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  useEffect(() => {
+    const reloadOverrides = () => {
+      try {
+        const raw = localStorage.getItem(SITE_STATUS_OVERRIDES_KEY);
+        const parsed = raw
+          ? (JSON.parse(raw) as Record<string, 'OVERDUE' | 'DUE_SOON' | 'ACTIVE_SITE' | 'COMPLETED'>)
+          : {};
+        setSiteStatusOverrides(parsed && typeof parsed === 'object' ? parsed : {});
+      } catch {
+        setSiteStatusOverrides({});
+      }
+    };
+    window.addEventListener('focus', reloadOverrides);
+    document.addEventListener('visibilitychange', reloadOverrides);
+    return () => {
+      window.removeEventListener('focus', reloadOverrides);
+      document.removeEventListener('visibilitychange', reloadOverrides);
+    };
   }, []);
 
   const now = new Date();
@@ -140,6 +178,10 @@ const AdminDashboardHome: React.FC = () => {
     job.customerPostcode || (job.customerAddress ? job.customerAddress.split(',').pop()?.trim() || '' : '');
 
   const installationSiteIdSet = useMemo(() => new Set(installationSiteIds), [installationSiteIds]);
+  const activeSiteCount = useMemo(() => {
+    const completedCount = installationSiteIds.filter((id) => siteStatusOverrides[id] === 'COMPLETED').length;
+    return Math.max(installationSiteIds.length - completedCount, 0);
+  }, [installationSiteIds, siteStatusOverrides]);
 
   const calendarJobClassName = (job: Job): string => {
     const type = (job.jobType || '').trim();
@@ -451,7 +493,7 @@ const AdminDashboardHome: React.FC = () => {
           </div>
           <div>
             <p className="text-[10px] font-black text-gray-500 uppercase tracking-tighter">Active Sites</p>
-            <p className="text-2xl font-black text-white">{siteCount}</p>
+            <p className="text-2xl font-black text-white">{activeSiteCount}</p>
           </div>
         </Link>
         <Link
@@ -580,9 +622,8 @@ const AdminDashboardHome: React.FC = () => {
                 {selectedJobsForDay.length > 0 && (
                   <div className="space-y-2">
                     {selectedJobsForDay.map((job) => (
-                      <Link
+                      <div
                         key={job.id}
-                        to={`/jobs/${job.id}`}
                         className={`flex items-center justify-between px-3 py-2 hover:bg-[#111111]/80 group ${calendarJobClassName(job)}`}
                       >
                         <div className="min-w-0">
@@ -610,11 +651,18 @@ const AdminDashboardHome: React.FC = () => {
                           <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-white/5 text-gray-300">
                             {job.status}
                           </span>
+                          <button
+                            type="button"
+                            onClick={() => setAllDetailsJob(job)}
+                            className="text-[10px] font-bold px-2 py-1 rounded-md bg-[#333333] text-[#F2C200] hover:bg-[#F2C200]/20 transition-colors"
+                          >
+                            View job
+                          </button>
                           {job.amount != null && (
                             <span className="text-xs font-bold text-[#F2C200]">£{job.amount.toLocaleString()}</span>
                           )}
                         </div>
-                      </Link>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -672,14 +720,15 @@ const AdminDashboardHome: React.FC = () => {
                       </div>
                       <div className="flex-1 space-y-1 overflow-y-auto">
                         {dayJobs.slice(0, 5).map((job) => (
-                          <Link
+                          <button
                             key={job.id}
-                            to={`/jobs/${job.id}`}
-                            className={`block px-2 py-1 text-[10px] font-bold text-white truncate ${calendarJobClassName(job)}`}
+                            type="button"
+                            onClick={() => setAllDetailsJob(job)}
+                            className={`block w-full text-left px-2 py-1 text-[10px] font-bold text-white truncate ${calendarJobClassName(job)}`}
                             title={job.customerName || job.title || job.id}
                           >
                             {job.customerName || job.title || 'Job'}
-                          </Link>
+                          </button>
                         ))}
                         {dayJobs.length > 5 && (
                           <p className="text-[9px] text-gray-500 font-bold px-1">+{dayJobs.length - 5} more</p>
@@ -701,125 +750,95 @@ const AdminDashboardHome: React.FC = () => {
 
           {/* Month view */}
           {calendarViewMode === 'month' && (
-            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.5fr)] gap-4">
-              <div className="bg-black border border-[#333333] rounded-xl p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <button
-                    type="button"
-                    onClick={goToPrevMonth}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-[#333333] hover:text-white transition-colors"
-                    aria-label="Previous month"
-                  >
-                    <i className="fas fa-chevron-left text-xs" />
-                  </button>
-                  <span className="text-sm font-bold text-white">
-                    {new Date(calendarView.year, calendarView.month).toLocaleString('default', {
-                      month: 'long',
-                      year: 'numeric',
-                    })}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={goToNextMonth}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-[#333333] hover:text-white transition-colors"
-                    aria-label="Next month"
-                  >
-                    <i className="fas fa-chevron-right text-xs" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-7 gap-0.5 text-center">
-                  {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-                    <div key={d} className="text-[9px] font-black text-gray-500 py-1">
-                      {d}
-                    </div>
-                  ))}
-                  {(() => {
-                    const firstDay = new Date(calendarView.year, calendarView.month, 1).getDay();
-                    const daysInMonth = new Date(calendarView.year, calendarView.month + 1, 0).getDate();
-                    const padding = Array.from({ length: firstDay }, (_, i) => (
-                      <div key={`p-${i}`} className="py-1.5" />
-                    ));
-                    const days = Array.from({ length: daysInMonth }, (_, i) => {
-                      const day = i + 1;
-                      const dateStr = `${calendarView.year}-${String(calendarView.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                      const isSelected = jobDate === dateStr;
-                      const isToday = dateStr === todayStr;
-                      const hasJobs = !!jobsByDate[dateStr]?.length;
-                      let stateClasses = '';
-                      if (isSelected) stateClasses = 'bg-[#F2C200] text-black';
-                      else if (hasJobs) stateClasses = 'bg-[#F2C200]/15 text-[#F2C200] hover:bg-[#F2C200]/25';
-                      else if (isToday) stateClasses = 'bg-[#333333] text-[#F2C200]';
-                      else stateClasses = 'text-gray-300 hover:bg-[#333333] hover:text-white';
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={goToPrevMonth}
+                  className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:bg-[#333333] hover:text-white transition-colors"
+                  aria-label="Previous month"
+                >
+                  <i className="fas fa-chevron-left text-xs" />
+                </button>
+                <span className="text-sm font-bold text-white">
+                  {new Date(calendarView.year, calendarView.month).toLocaleString('default', {
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </span>
+                <button
+                  type="button"
+                  onClick={goToNextMonth}
+                  className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:bg-[#333333] hover:text-white transition-colors"
+                  aria-label="Next month"
+                >
+                  <i className="fas fa-chevron-right text-xs" />
+                </button>
+              </div>
+              <div className="grid grid-cols-7 gap-2 min-h-[460px]">
+                {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+                  <div key={d} className="text-center text-[9px] font-black text-gray-500 uppercase py-1">
+                    {d}
+                  </div>
+                ))}
+                {(() => {
+                  const firstDay = new Date(calendarView.year, calendarView.month, 1).getDay();
+                  const daysInMonth = new Date(calendarView.year, calendarView.month + 1, 0).getDate();
+                  return Array.from({ length: 42 }, (_, i) => {
+                    const day = i - firstDay + 1;
+                    const isInMonth = day >= 1 && day <= daysInMonth;
+                    if (!isInMonth) {
                       return (
+                        <div
+                          key={`empty-${i}`}
+                          className="rounded-xl border border-transparent bg-transparent min-h-[140px]"
+                        />
+                      );
+                    }
+                    const dateStr = `${calendarView.year}-${String(calendarView.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const isSelected = jobDate === dateStr;
+                    const isToday = dateStr === todayStr;
+                    const dayJobs = jobsByDate[dateStr] || [];
+                    return (
+                      <div
+                        key={dateStr}
+                        className={`rounded-xl border p-2 flex flex-col min-h-[140px] ${
+                          isSelected
+                            ? 'bg-[#F2C200]/10 border-[#F2C200]/50'
+                            : isToday
+                              ? 'bg-[#333333]/40 border-[#F2C200]/30'
+                              : 'bg-black border-[#333333]'
+                        }`}
+                      >
                         <button
-                          key={day}
                           type="button"
                           onClick={() => setJobDate(dateStr)}
-                          className={`py-1.5 rounded-lg text-xs font-bold transition-colors border border-transparent ${stateClasses}`}
+                          className="self-start text-left"
                         >
-                          {day}
-                        </button>
-                      );
-                    });
-                    return [...padding, ...days];
-                  })()}
-                </div>
-                {jobDate && (
-                  <p className="text-[10px] text-gray-500 mt-2 font-bold">
-                    Selected:{' '}
-                    {new Date(jobDate + 'T12:00:00').toLocaleDateString('en-GB', {
-                      weekday: 'short',
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric',
-                    })}
-                  </p>
-                )}
-              </div>
-              <div className="bg-black border border-[#333333] rounded-xl p-3 flex flex-col min-h-[180px]">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Jobs on selected day</p>
-                  {selectedJobsForDay.length > 0 && (
-                    <span className="text-[10px] font-bold text-[#F2C200]">
-                      {selectedJobsForDay.length} job{selectedJobsForDay.length !== 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
-                {(!jobDate || selectedJobsForDay.length === 0) && (
-                  <div className="flex-1 flex items-center justify-center">
-                    <p className="text-xs text-gray-600 font-bold text-center px-4">
-                      Select a highlighted date to see scheduled jobs for that day.
-                    </p>
-                  </div>
-                )}
-                {jobDate && selectedJobsForDay.length > 0 && (
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {selectedJobsForDay.map((job) => (
-                      <Link
-                        key={job.id}
-                        to={`/jobs/${job.id}`}
-                        className={`flex items-center justify-between px-3 py-2 hover:bg-[#111111]/80 group ${calendarJobClassName(job)}`}
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-white group-hover:text-[#F2C200] truncate">
-                            {job.customerName || job.title || 'Job'}
-                          </p>
-                          <p className="text-[10px] text-gray-500 font-bold truncate">
-                            {job.customerAddress || job.id}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-white/5 text-gray-300">
-                            {job.status}
+                          <span className={`text-sm font-bold ${isSelected || isToday ? 'text-[#F2C200]' : 'text-white'}`}>
+                            {day}
                           </span>
-                          {job.amount != null && (
-                            <span className="text-xs font-bold text-[#F2C200]">£{job.amount.toLocaleString()}</span>
+                        </button>
+                        <div className="flex-1 space-y-1 overflow-y-auto mt-1">
+                          {dayJobs.slice(0, 4).map((job) => (
+                            <button
+                              key={job.id}
+                              type="button"
+                              onClick={() => setAllDetailsJob(job)}
+                              className={`block w-full text-left px-2 py-1 text-[10px] font-bold text-white truncate ${calendarJobClassName(job)}`}
+                              title={job.customerName || job.title || job.id}
+                            >
+                              {job.customerName || job.title || 'Job'}
+                            </button>
+                          ))}
+                          {dayJobs.length > 4 && (
+                            <p className="text-[9px] text-gray-500 font-bold px-1">+{dayJobs.length - 4} more</p>
                           )}
                         </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
           )}
@@ -966,6 +985,79 @@ const AdminDashboardHome: React.FC = () => {
           </span>
         </button>
       </div>
+
+      {/* All details modal */}
+      {allDetailsJob && (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[600] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#111111] border border-[#333333] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl my-8">
+            <div className="p-6 border-b border-[#333333] flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white">All details</h2>
+              <button
+                type="button"
+                onClick={() => setAllDetailsJob(null)}
+                className="text-gray-400 hover:text-white p-1 transition-colors"
+              >
+                <i className="fas fa-times text-xl"></i>
+              </button>
+            </div>
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">Site Name</label>
+                <div className="w-full px-4 py-2.5 bg-black border border-[#333333] rounded-xl text-white text-sm">
+                  {allDetailsJob.customerName || allDetailsJob.title || '—'}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">Address</label>
+                <div className="w-full px-4 py-2.5 bg-black border border-[#333333] rounded-xl text-white text-sm">
+                  {allDetailsJob.customerAddress || '—'}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">Postcode</label>
+                <div className="w-full px-4 py-2.5 bg-black border border-[#333333] rounded-xl text-white text-sm">
+                  {allDetailsJob.customerPostcode || '—'}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">Contact Name</label>
+                <div className="w-full px-4 py-2.5 bg-black border border-[#333333] rounded-xl text-white text-sm">
+                  {allDetailsJob.contactName || allDetailsJob.customerName || '—'}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">Contact Number</label>
+                <div className="w-full px-4 py-2.5 bg-black border border-[#333333] rounded-xl text-white text-sm">
+                  {allDetailsJob.customerPhone || '—'}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">Contact Email</label>
+                <div className="w-full px-4 py-2.5 bg-black border border-[#333333] rounded-xl text-white text-sm break-all">
+                  {allDetailsJob.customerEmail || '—'}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">
+                  What is required on this site (equipment, access, etc.)
+                </label>
+                <div className="w-full px-4 py-2.5 bg-black border border-[#333333] rounded-xl text-white text-sm whitespace-pre-wrap">
+                  {allDetailsJob.equipmentRequired || allDetailsJob.accessInstructions || allDetailsJob.description || '—'}
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-[#333333] flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setAllDetailsJob(null)}
+                className="px-5 py-2.5 rounded-lg font-bold text-sm bg-transparent border border-[#333333] text-gray-300 hover:border-[#F2C200] hover:text-white transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Schedule Renewal Job Modal */}
       {scheduleModalOpen && scheduleSite && (

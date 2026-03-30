@@ -22,6 +22,11 @@ const AdminAddCustomer: React.FC = () => {
     email: '',
     phone: '',
     address: '',
+    companyName: '',
+    vatNumber: '',
+    accountType: '' as '' | 'credit' | 'cash',
+    balance: '0',
+    customerType: '' as '' | 'trade' | 'retail',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,17 +42,26 @@ const AdminAddCustomer: React.FC = () => {
         email: fromLead.email || '',
         phone: fromLead.phone || '',
         address: '',
+        companyName: '',
+        vatNumber: '',
+        accountType: '',
+        balance: '0',
+        customerType: '',
       });
     }
   }, [fromLead]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, sendInvite = false) => {
     e.preventDefault();
     setError('');
     setAttachmentWarning('');
     setSuccess(false);
     if (!form.name.trim()) {
       setError('Please enter the customer name.');
+      return;
+    }
+    if (sendInvite && !form.email.trim()) {
+      setError('A valid email is required to send an invite.');
       return;
     }
     setLoading(true);
@@ -57,6 +71,13 @@ const AdminAddCustomer: React.FC = () => {
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
         address: form.address.trim() || undefined,
+        companyName: form.companyName.trim() || undefined,
+        vatNumber: form.vatNumber.trim() || undefined,
+        accountType: form.accountType || null,
+        balance: Number.isFinite(Number(form.balance)) ? Number(form.balance) : 0,
+        customerType: form.customerType || null,
+        completed: false,
+        sendInvite,
       });
       if (result.success) {
         if (fromLead && result.user) {
@@ -137,7 +158,17 @@ const AdminAddCustomer: React.FC = () => {
         }
 
         setSuccess(true);
-        setForm({ name: '', email: '', phone: '', address: '' });
+        setForm({
+          name: '',
+          email: '',
+          phone: '',
+          address: '',
+          companyName: '',
+          vatNumber: '',
+          accountType: '',
+          balance: '0',
+          customerType: '',
+        });
         if (fromLead) {
           navigate('/dashboard/leads', { replace: true, state: {} });
         }
@@ -149,6 +180,11 @@ const AdminAddCustomer: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleInviteClick = async () => {
+    const fakeEvent = { preventDefault: () => undefined } as React.FormEvent;
+    await handleSubmit(fakeEvent, true);
   };
 
   return (
@@ -190,7 +226,7 @@ const AdminAddCustomer: React.FC = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-5">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Name *</label>
               <input
@@ -233,6 +269,70 @@ const AdminAddCustomer: React.FC = () => {
               />
             </div>
             <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Company Name</label>
+              <input
+                type="text"
+                value={form.companyName}
+                onChange={(e) => setForm({ ...form, companyName: e.target.value })}
+                className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">VAT Number</label>
+              <input
+                type="text"
+                value={form.vatNumber}
+                onChange={(e) => setForm({ ...form, vatNumber: e.target.value })}
+                className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Account Type</label>
+                <select
+                  value={form.accountType}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      accountType: e.target.value === 'credit' || e.target.value === 'cash' ? e.target.value : '',
+                    })
+                  }
+                  className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none"
+                >
+                  <option value="">None</option>
+                  <option value="credit">Credit</option>
+                  <option value="cash">Cash</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Balance</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.balance}
+                  onChange={(e) => setForm({ ...form, balance: e.target.value })}
+                  className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Customer Type</label>
+                <select
+                  value={form.customerType}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      customerType: e.target.value === 'trade' || e.target.value === 'retail' ? e.target.value : '',
+                    })
+                  }
+                  className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none"
+                >
+                  <option value="">None</option>
+                  <option value="trade">Trade</option>
+                  <option value="retail">Retail</option>
+                </select>
+              </div>
+            </div>
+            <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Attachments (optional)</label>
               <input
                 type="file"
@@ -255,23 +355,45 @@ const AdminAddCustomer: React.FC = () => {
                 </p>
               )}
             </div>
-            <button
-              type="submit"
-              disabled={loading || pendingUploading}
-              className="w-full py-4 rounded-xl font-black uppercase tracking-widest bg-[#F2C200] text-black hover:brightness-110 disabled:opacity-70 transition-all"
-            >
-              {loading ? (
-                <>
-                  <i className="fas fa-spinner fa-spin mr-2" />
-                  Adding customer...
-                </>
-              ) : (
-                <>
-                  <i className="fas fa-user-plus mr-2" />
-                  Add Customer
-                </>
-              )}
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="submit"
+                disabled={loading || pendingUploading}
+                className="w-full py-4 rounded-xl font-black uppercase tracking-widest bg-[#F2C200] text-black hover:brightness-110 disabled:opacity-70 transition-all"
+              >
+                {loading ? (
+                  <>
+                    <i className="fas fa-spinner fa-spin mr-2" />
+                    Adding customer...
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-user-plus mr-2" />
+                    Add Customer
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={loading || pendingUploading}
+                onClick={() => {
+                  void handleInviteClick();
+                }}
+                className="w-full py-4 rounded-xl font-black uppercase tracking-widest bg-black border border-[#F2C200] text-[#F2C200] hover:bg-[#1A1A1A] disabled:opacity-70 transition-all"
+              >
+                {loading ? (
+                  <>
+                    <i className="fas fa-spinner fa-spin mr-2" />
+                    Sending invite...
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-envelope mr-2" />
+                    Add &amp; Send Invite
+                  </>
+                )}
+              </button>
+            </div>
           </form>
         </div>
       </div>

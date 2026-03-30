@@ -91,7 +91,7 @@ const AdminJobs: React.FC = () => {
         matchesSearch(j.customerEmail)
     )
     .filter((j) => (statusFilter === 'ALL' ? true : j.status === statusFilter))
-    .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+    .sort((a, b) => getSiteName(a).localeCompare(getSiteName(b), undefined, { sensitivity: 'base' }));
 
   const getStatusStyles = (status: JobStatus) => {
     switch (status) {

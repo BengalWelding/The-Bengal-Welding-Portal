@@ -10,6 +10,12 @@ export interface StoredUser extends User {
   accountNumber?: string | null;
   productsCount?: number;
   attachments?: CustomerAttachment[];
+  companyName?: string | null;
+  vatNumber?: string | null;
+  accountType?: 'credit' | 'cash' | null;
+  balance?: number | null;
+  customerType?: 'trade' | 'retail' | null;
+  completed?: boolean | null;
 }
 
 const USERS_CACHE_KEY = 'bengal_users_cache_v1';
@@ -166,7 +172,7 @@ export async function getAllUsers(): Promise<StoredUser[]> {
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, role, account_number, name, email, phone, address, products_count, attachments')
+    .select('id, role, account_number, name, email, phone, address, products_count, attachments, company_name, vat_number, account_type, balance, customer_type, completed')
     .order('account_number', { ascending: true, nullsFirst: false });
 
   if (error) throw new Error(error.message || 'Failed to load users');
@@ -184,6 +190,18 @@ export async function getAllUsers(): Promise<StoredUser[]> {
       accountNumber: (p.account_number as string) ?? null,
       productsCount: typeof p.products_count === 'number' ? p.products_count : 0,
       attachments: Array.isArray(p.attachments) ? (p.attachments as CustomerAttachment[]) : [],
+      companyName: (p.company_name as string) ?? null,
+      vatNumber: (p.vat_number as string) ?? null,
+      accountType:
+        p.account_type === 'credit' || p.account_type === 'cash'
+          ? (p.account_type as 'credit' | 'cash')
+          : null,
+      balance: typeof p.balance === 'number' && Number.isFinite(p.balance) ? p.balance : null,
+      customerType:
+        p.customer_type === 'trade' || p.customer_type === 'retail'
+          ? (p.customer_type as 'trade' | 'retail')
+          : null,
+      completed: typeof p.completed === 'boolean' ? p.completed : null,
     };
   });
 
@@ -235,6 +253,13 @@ export async function createCustomer(data: {
   email?: string;
   phone?: string;
   address?: string;
+  companyName?: string;
+  vatNumber?: string;
+  accountType?: 'credit' | 'cash' | null;
+  balance?: number | null;
+  customerType?: 'trade' | 'retail' | null;
+  completed?: boolean | null;
+  sendInvite?: boolean;
 }): Promise<{ success: boolean; user?: User; error?: string }> {
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -252,6 +277,13 @@ export async function createCustomer(data: {
       email: data.email?.trim() ? data.email.trim().toLowerCase() : '',
       phone: data.phone?.trim() || '',
       address: data.address?.trim() || '',
+      company_name: data.companyName?.trim() || '',
+      vat_number: data.vatNumber?.trim() || '',
+      account_type: data.accountType === 'credit' || data.accountType === 'cash' ? data.accountType : null,
+      balance: typeof data.balance === 'number' && Number.isFinite(data.balance) ? data.balance : 0,
+      customer_type: data.customerType === 'trade' || data.customerType === 'retail' ? data.customerType : null,
+      completed: typeof data.completed === 'boolean' ? data.completed : false,
+      send_invite: Boolean(data.sendInvite),
       redirectTo: `${window.location.origin}${window.location.pathname || ''}#/set-password`,
     }),
   });
@@ -277,19 +309,17 @@ export async function updateCustomer(data: {
   email?: string;
   phone?: string;
   address?: string;
+  companyName?: string;
+  vatNumber?: string;
+  accountType?: 'credit' | 'cash' | null;
+  balance?: number | null;
+  customerType?: 'trade' | 'retail' | null;
+  completed?: boolean | null;
 }): Promise<{ success: boolean; user?: User; error?: string }> {
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
   const emailToSend = (data.email ?? '').trim().toLowerCase();
-
-  // Access tokens can expire between "Add Customer" and "Save".
-  // Refresh and retry once on 401 to make the UX reliable.
-  try {
-    await supabase.auth.refreshSession();
-  } catch {
-    // Don't block update flow; we'll attempt with whatever access token we have.
-  }
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const { data: { session } } = await supabase.auth.getSession();
@@ -309,6 +339,12 @@ export async function updateCustomer(data: {
         email: emailToSend,
         phone: data.phone?.trim() || '',
         address: data.address?.trim() || '',
+        company_name: data.companyName?.trim() || '',
+        vat_number: data.vatNumber?.trim() || '',
+        account_type: data.accountType === 'credit' || data.accountType === 'cash' ? data.accountType : null,
+        balance: typeof data.balance === 'number' && Number.isFinite(data.balance) ? data.balance : 0,
+        customer_type: data.customerType === 'trade' || data.customerType === 'retail' ? data.customerType : null,
+        completed: typeof data.completed === 'boolean' ? data.completed : false,
       }),
     });
 

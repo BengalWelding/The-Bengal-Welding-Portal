@@ -14,6 +14,31 @@ const SURVEY_TYPE_OPTIONS = [
 const SCOPE_OPTIONS = ['Small', 'Medium', 'Large'];
 const PRIORITY_OPTIONS = ['Low', 'Normal', 'Urgent'];
 
+function parseJobAddress(address?: string) {
+  const parts = (address || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return { line1: '', line2: '', city: '' };
+  }
+
+  if (parts.length === 1) {
+    return { line1: parts[0], line2: '', city: '' };
+  }
+
+  if (parts.length === 2) {
+    return { line1: parts[0], line2: '', city: parts[1] };
+  }
+
+  return {
+    line1: parts[0],
+    line2: parts.slice(1, -1).join(', '),
+    city: parts[parts.length - 1],
+  };
+}
+
 const AdminSiteSurveyForm: React.FC = () => {
   const navigate = useNavigate();
   const { id: editId } = useParams<{ id: string }>();
@@ -55,6 +80,39 @@ const AdminSiteSurveyForm: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
+
+  const handleLinkedJobChange = (jobId: string) => {
+    setLinkedJobId(jobId);
+
+    if (!jobId) return;
+
+    const selectedJob = jobs.find((j) => j.id === jobId);
+    if (!selectedJob) return;
+
+    const parsedAddress = parseJobAddress(selectedJob.customerAddress);
+    const selectedJobAny = selectedJob as unknown as Record<string, string | undefined>;
+    const altName =
+      selectedJobAny.altContactName ||
+      selectedJobAny.alternateContactName ||
+      selectedJobAny.secondaryContactName ||
+      '';
+    const altPhone =
+      selectedJobAny.altContactPhone ||
+      selectedJobAny.alternateContactPhone ||
+      selectedJobAny.secondaryContactPhone ||
+      '';
+
+    setSiteName(selectedJob.customerName || selectedJob.title || '');
+    setAddressLine1(parsedAddress.line1);
+    setAddressLine2(parsedAddress.line2);
+    setCity(parsedAddress.city);
+    setPostcode(selectedJob.customerPostcode || '');
+    setContactName(selectedJob.contactName || selectedJob.customerName || '');
+    setContactPhone(selectedJob.customerPhone || '');
+    setContactEmail(selectedJob.customerEmail || '');
+    setAltContactName(altName);
+    setAltContactPhone(altPhone);
+  };
 
   useEffect(() => {
     if (!editId) {
@@ -148,20 +206,12 @@ const AdminSiteSurveyForm: React.FC = () => {
       setError('Address is required');
       return false;
     }
-    if (!city.trim()) {
-      setError('City/Town is required');
-      return false;
-    }
     if (!postcode.trim()) {
       setError('Postcode is required');
       return false;
     }
     if (!contactName.trim()) {
       setError('Contact name is required');
-      return false;
-    }
-    if (!contactPhone.trim()) {
-      setError('Contact phone is required');
       return false;
     }
     if (!workRequired.trim()) {
@@ -318,7 +368,7 @@ const AdminSiteSurveyForm: React.FC = () => {
             />
           </div>
           <div>
-            <label className={labelCls}>City/Town *</label>
+            <label className={labelCls}>City/Town</label>
             <input
               type="text"
               value={city}
@@ -355,7 +405,7 @@ const AdminSiteSurveyForm: React.FC = () => {
             />
           </div>
           <div>
-            <label className={labelCls}>Contact Phone *</label>
+            <label className={labelCls}>Contact Phone</label>
             <input
               type="tel"
               value={contactPhone}
@@ -409,7 +459,7 @@ const AdminSiteSurveyForm: React.FC = () => {
           <select
             className={inputCls}
             value={linkedJobId}
-            onChange={(e) => setLinkedJobId(e.target.value)}
+            onChange={(e) => handleLinkedJobChange(e.target.value)}
           >
             <option value="">Not linked</option>
             {jobs.map((j) => (

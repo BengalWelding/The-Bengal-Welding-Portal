@@ -14,7 +14,7 @@ import { supabase } from '../lib/supabase';
 
 const MAX_MEDIA_FILES = 10;
 const MAX_FILE_MB = 10;
-type SiteStatus = 'OVERDUE' | 'DUE_SOON' | 'ACTIVE_SITE';
+type SiteStatus = 'OVERDUE' | 'DUE_SOON' | 'ACTIVE_SITE' | 'COMPLETED';
 const SITE_STATUS_OVERRIDES_KEY = 'bengal_site_status_overrides';
 
 const AdminSites: React.FC = () => {
@@ -58,10 +58,10 @@ const AdminSites: React.FC = () => {
     return { year: t.getFullYear(), month: t.getMonth() };
   });
   const [activeDateField, setActiveDateField] = useState<'start' | 'end' | null>(null);
-  const [siteFilter, setSiteFilter] = useState<'all' | 'overdue' | 'due-soon'>(() => {
+  const [siteFilter, setSiteFilter] = useState<'all' | 'overdue' | 'due-soon' | 'completed'>(() => {
     const params = new URLSearchParams(location.search);
     const value = params.get('filter');
-    if (value === 'overdue' || value === 'due-soon') return value;
+    if (value === 'overdue' || value === 'due-soon' || value === 'completed') return value;
     return 'all';
   });
   const [siteStatusOverrides, setSiteStatusOverrides] = useState<Record<string, SiteStatus>>(() => {
@@ -116,7 +116,7 @@ const AdminSites: React.FC = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const value = params.get('filter');
-    if (value === 'overdue' || value === 'due-soon') {
+    if (value === 'overdue' || value === 'due-soon' || value === 'completed') {
       setSiteFilter(value);
     } else {
       setSiteFilter('all');
@@ -233,6 +233,8 @@ const AdminSites: React.FC = () => {
         return 'bg-red-900/30 text-red-400 border-red-800/50';
       case 'DUE_SOON':
         return 'bg-amber-900/30 text-amber-400 border-amber-800/50';
+      case 'COMPLETED':
+        return 'bg-slate-900/40 text-slate-300 border-slate-700/60';
       case 'ACTIVE_SITE':
       default:
         return 'bg-green-900/30 text-green-400 border-green-800/50';
@@ -245,6 +247,8 @@ const AdminSites: React.FC = () => {
         return 'Overdue';
       case 'DUE_SOON':
         return 'Due Soon';
+      case 'COMPLETED':
+        return 'Completed';
       case 'ACTIVE_SITE':
       default:
         return 'Active Site';
@@ -255,13 +259,15 @@ const AdminSites: React.FC = () => {
     let overdue = 0;
     let dueSoon = 0;
     let active = 0;
+    let completed = 0;
     for (const site of sites) {
       const status = getSiteStatus(site.id);
       if (status === 'OVERDUE') overdue += 1;
       else if (status === 'DUE_SOON') dueSoon += 1;
+      else if (status === 'COMPLETED') completed += 1;
       else active += 1;
     }
-    return { overdue, dueSoon, active };
+    return { overdue, dueSoon, active, completed };
   }, [sites, siteStatusOverrides, overdueSiteIds, dueSoonSiteIds]);
 
   const filteredSites = sites.filter((s) => {
@@ -269,8 +275,9 @@ const AdminSites: React.FC = () => {
     const status = getSiteStatus(s.id);
     if (siteFilter === 'overdue') return status === 'OVERDUE';
     if (siteFilter === 'due-soon') return status === 'DUE_SOON';
+    if (siteFilter === 'completed') return status === 'COMPLETED';
     return true;
-  });
+  }).sort((a, b) => (a.site_name || '').localeCompare(b.site_name || '', undefined, { sensitivity: 'base' }));
 
   const siteScheduleMap = useMemo(() => {
     const map: Record<string, { startDate: string; endDate: string }> = {};
@@ -552,9 +559,11 @@ const AdminSites: React.FC = () => {
           <div>
             <h1 className="text-2xl font-black text-[#F2C200] tracking-tight">Sites</h1>
             <p className="text-gray-500 text-sm font-bold mt-0.5">
-              {siteFilter === 'all' && `${sites.length} installation site${sites.length !== 1 ? 's' : ''}`}
+              {siteFilter === 'all' &&
+                `${sites.length - statusCounts.completed} active site${sites.length - statusCounts.completed !== 1 ? 's' : ''}`}
               {siteFilter === 'overdue' && `${statusCounts.overdue} overdue site${statusCounts.overdue !== 1 ? 's' : ''}`}
               {siteFilter === 'due-soon' && `${statusCounts.dueSoon} due soon site${statusCounts.dueSoon !== 1 ? 's' : ''}`}
+              {siteFilter === 'completed' && `${statusCounts.completed} completed site${statusCounts.completed !== 1 ? 's' : ''}`}
             </p>
           </div>
           <button
@@ -576,7 +585,7 @@ const AdminSites: React.FC = () => {
           >
             <i className="fas fa-building text-sm"></i>
             <span>Active Sites</span>
-            <span className="text-[10px] font-black opacity-80">({sites.length})</span>
+            <span className="text-[10px] font-black opacity-80">({sites.length - statusCounts.completed})</span>
           </Link>
           <Link
             to="/dashboard/sites?filter=overdue"
@@ -601,6 +610,18 @@ const AdminSites: React.FC = () => {
             <i className="fas fa-clock text-sm"></i>
             <span>Due Soon</span>
             <span className="text-[10px] font-black opacity-80">({statusCounts.dueSoon})</span>
+          </Link>
+          <Link
+            to="/dashboard/sites?filter=completed"
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${
+              siteFilter === 'completed'
+                ? 'bg-slate-500/10 border-slate-400 text-slate-300'
+                : 'bg-[#111111] border-[#333333] text-gray-400 hover:border-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <i className="fas fa-circle-check text-sm"></i>
+            <span>Completed</span>
+            <span className="text-[10px] font-black opacity-80">({statusCounts.completed})</span>
           </Link>
         </div>
         <div className="relative w-full max-w-md">
@@ -693,6 +714,7 @@ const AdminSites: React.FC = () => {
                         <option value="OVERDUE">Overdue</option>
                         <option value="DUE_SOON">Due Soon</option>
                         <option value="ACTIVE_SITE">Active Site</option>
+                        <option value="COMPLETED">Completed</option>
                       </select>
                       <i className="fas fa-chevron-down text-[8px] -ml-3 opacity-60"></i>
                     </div>
@@ -714,11 +736,21 @@ const AdminSites: React.FC = () => {
                       )}
                       <button
                         onClick={() => openScheduleForSite(s)}
+                        disabled={getSiteStatus(s.id) === 'COMPLETED'}
                         className={`px-3 py-1.5 rounded-full text-xs font-bold hover:brightness-110 active:scale-95 transition-all ${
-                          siteScheduleMap[s.id]
+                          getSiteStatus(s.id) === 'COMPLETED'
+                            ? 'bg-[#333333] text-gray-500 cursor-not-allowed hover:brightness-100 active:scale-100'
+                            : siteScheduleMap[s.id]
                             ? 'bg-blue-600 text-white'
                             : 'bg-[#F2C200] text-black'
                         }`}
+                        title={
+                          getSiteStatus(s.id) === 'COMPLETED'
+                            ? 'Scheduling disabled for completed sites'
+                            : siteScheduleMap[s.id]
+                              ? 'Edit scheduled dates'
+                              : 'Schedule dates'
+                        }
                       >
                         {siteScheduleMap[s.id] ? 'Dates confirmed' : 'Schedule dates'}
                       </button>
@@ -755,6 +787,8 @@ const AdminSites: React.FC = () => {
                 ? 'No overdue sites.'
                 : siteFilter === 'due-soon'
                   ? 'No due soon sites.'
+                  : siteFilter === 'completed'
+                    ? 'No completed sites.'
                   : 'No sites match your search.'}
           </div>
         )}

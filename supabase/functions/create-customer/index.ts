@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { name, email, phone, address } = body;
+    const { name, email, phone, address, send_invite, redirectTo } = body;
     if (!name) {
       return new Response(JSON.stringify({ error: "Missing name" }), {
         status: 400,
@@ -65,30 +65,91 @@ Deno.serve(async (req) => {
 
     const trimmedName = String(name).trim();
     const providedEmail = String(email ?? "").trim().toLowerCase();
+    const shouldSendInvite = send_invite === true;
     const userEmail = providedEmail || `customer-${crypto.randomUUID()}@no-email.local`;
+    const companyName = String(body.company_name ?? body.companyName ?? "").trim();
+    const vatNumber = String(body.vat_number ?? body.vatNumber ?? "").trim();
+    const rawAccountType = String(body.account_type ?? body.accountType ?? "").trim().toLowerCase();
+    const accountType = rawAccountType === "credit" || rawAccountType === "cash" ? rawAccountType : null;
+    const rawCustomerType = String(body.customer_type ?? body.customerType ?? "").trim().toLowerCase();
+    const customerType = rawCustomerType === "trade" || rawCustomerType === "retail" ? rawCustomerType : null;
+    const completed = Boolean(body.completed ?? false);
+    const rawBalance = body.balance;
+    const balanceParsed =
+      typeof rawBalance === "number"
+        ? rawBalance
+        : typeof rawBalance === "string" && rawBalance.trim() !== ""
+          ? Number(rawBalance)
+          : 0;
+    if (!Number.isFinite(balanceParsed)) {
+      return new Response(JSON.stringify({ error: "Invalid balance" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const balance = Number(balanceParsed);
 
-    // Create auth user directly so admins can add customers without email-delivery limits.
-    const tempPassword = `Tmp-${crypto.randomUUID()}-A1!`;
-    const { data: createdData, error } = await admin.auth.admin.createUser({
-      email: userEmail,
-      password: tempPassword,
-      email_confirm: true,
-      user_metadata: {
-        name: trimmedName,
-        role: "CUSTOMER",
-        phone: (phone && String(phone).trim()) || "",
-        address: (address && String(address).trim()) || "",
-      },
-    });
-
-    if (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
+    if (shouldSendInvite && !providedEmail) {
+      return new Response(JSON.stringify({ error: "Valid email required to send invite" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (!createdData?.user) {
+    let createdUser: any = null;
+    if (shouldSendInvite) {
+      const { data: invitedData, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(providedEmail, {
+        redirectTo: String(redirectTo ?? "").trim() || undefined,
+        data: {
+          name: trimmedName,
+          role: "CUSTOMER",
+          phone: (phone && String(phone).trim()) || "",
+          address: (address && String(address).trim()) || "",
+          company_name: companyName,
+          vat_number: vatNumber,
+          account_type: accountType,
+          balance,
+          customer_type: customerType,
+          completed,
+        },
+      });
+      if (inviteErr) {
+        return new Response(JSON.stringify({ error: inviteErr.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      createdUser = invitedData?.user ?? null;
+    } else {
+      // Create auth user directly so admins can add customers without email-delivery limits.
+      const tempPassword = `Tmp-${crypto.randomUUID()}-A1!`;
+      const { data: createdData, error } = await admin.auth.admin.createUser({
+        email: userEmail,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: {
+          name: trimmedName,
+          role: "CUSTOMER",
+          phone: (phone && String(phone).trim()) || "",
+          address: (address && String(address).trim()) || "",
+          company_name: companyName,
+          vat_number: vatNumber,
+          account_type: accountType,
+          balance,
+          customer_type: customerType,
+          completed,
+        },
+      });
+      if (error) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      createdUser = createdData?.user ?? null;
+    }
+
+    if (!createdUser) {
       return new Response(JSON.stringify({ error: "User creation failed" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -98,12 +159,18 @@ Deno.serve(async (req) => {
     // Upsert profile for fast admin listing + RLS
     await admin.from("profiles").upsert(
       {
-        id: createdData.user.id,
+        id: createdUser.id,
         role: "customer",
         name: trimmedName,
         email: providedEmail || null,
         phone: (phone && String(phone).trim()) || "",
         address: (address && String(address).trim()) || "",
+        company_name: companyName || null,
+        vat_number: vatNumber || null,
+        account_type: accountType,
+        balance,
+        customer_type: customerType,
+        completed,
       },
       { onConflict: "id" }
     );
@@ -111,9 +178,9 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         user: {
-          id: createdData.user.id,
+          id: createdUser.id,
           email: providedEmail || "",
-          user_metadata: createdData.user.user_metadata,
+          user_metadata: createdUser.user_metadata,
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
