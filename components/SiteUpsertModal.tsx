@@ -1,0 +1,366 @@
+import React, { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+import {
+  createInstallationSite,
+  updateInstallationSite,
+  type InstallationSite,
+  type InstallationSiteInsert,
+} from '../lib/installationSites';
+
+const MAX_MEDIA_FILES = 10;
+const MAX_FILE_MB = 10;
+
+type Props = {
+  open: boolean;
+  mode: 'add' | 'edit';
+  initialSite?: InstallationSite | null;
+  onClose: () => void;
+  onSaved?: (site: InstallationSite) => void;
+};
+
+export default function SiteUpsertModal({ open, mode, initialSite, onClose, onSaved }: Props) {
+  const isEdit = mode === 'edit';
+
+  const [form, setForm] = useState<InstallationSiteInsert>(() => ({
+    site_name: initialSite?.site_name ?? '',
+    address: initialSite?.address ?? '',
+    postcode: initialSite?.postcode ?? '',
+    contact_name: initialSite?.contact_name ?? '',
+    contact_phone: initialSite?.contact_phone ?? '',
+    contact_email: initialSite?.contact_email ?? '',
+    notes: initialSite?.notes ?? '',
+    equipment_required: initialSite?.equipment_required ?? '',
+    media: initialSite?.media ?? [],
+  }));
+
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [mediaPreview, setMediaPreview] = useState<
+    { type: 'image' | 'video'; url: string; name?: string } | null
+  >(null);
+
+  const inputClass =
+    'w-full px-4 py-2.5 bg-[#111111] border border-[#333333] rounded-lg text-white text-sm focus:outline-none focus:border-[#F2C200] focus:ring-1 focus:ring-[#F2C200]/30';
+  const labelClass = 'block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5';
+
+  // When a different site is opened for edit, sync form.
+  useEffect(() => {
+    if (!open) return;
+    setForm({
+      site_name: initialSite?.site_name ?? '',
+      address: initialSite?.address ?? '',
+      postcode: initialSite?.postcode ?? '',
+      contact_name: initialSite?.contact_name ?? '',
+      contact_phone: initialSite?.contact_phone ?? '',
+      contact_email: initialSite?.contact_email ?? '',
+      notes: initialSite?.notes ?? '',
+      equipment_required: initialSite?.equipment_required ?? '',
+      media: initialSite?.media ?? [],
+    });
+    setSubmitError(null);
+    setUploadError(null);
+  }, [open, initialSite?.id]);
+
+  if (!open) return null;
+
+  const handleSubmit = async () => {
+    if (!form.site_name.trim()) {
+      setSubmitError('Site name is required');
+      return;
+    }
+    if (!form.address.trim()) {
+      setSubmitError('Address is required');
+      return;
+    }
+    if (!form.postcode.trim()) {
+      setSubmitError('Postcode is required');
+      return;
+    }
+    if (!form.contact_name.trim()) {
+      setSubmitError('Contact name is required');
+      return;
+    }
+    if (!form.contact_phone.trim()) {
+      setSubmitError('Contact number is required');
+      return;
+    }
+
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const payload: InstallationSiteInsert = {
+        site_name: form.site_name.trim(),
+        address: form.address.trim(),
+        postcode: form.postcode.trim(),
+        contact_name: form.contact_name.trim(),
+        contact_phone: form.contact_phone.trim(),
+        contact_email: form.contact_email?.trim() || null,
+        notes: form.notes?.trim() || null,
+        equipment_required: form.equipment_required?.trim() || null,
+        media: form.media ?? [],
+      };
+
+      let saved: InstallationSite;
+      if (isEdit) {
+        if (!initialSite?.id) throw new Error('No site selected to edit');
+        saved = await updateInstallationSite(initialSite.id, payload);
+      } else {
+        saved = await createInstallationSite(payload);
+      }
+      onSaved?.(saved);
+      onClose();
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : 'Failed to save site');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleMediaChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadError(null);
+    const currentCount = (form.media ?? []).length;
+    if (currentCount + files.length > MAX_MEDIA_FILES) {
+      setUploadError(`You can attach up to ${MAX_MEDIA_FILES} files per site.`);
+      return;
+    }
+
+    const overLimit = Array.from(files).find((f) => f.size > MAX_FILE_MB * 1024 * 1024);
+    if (overLimit) {
+      setUploadError(`Each file must be ${MAX_FILE_MB} MB or smaller.`);
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const newMedia: { type: 'image' | 'video'; url: string; name?: string }[] = [];
+      for (const file of Array.from(files)) {
+        const ext = file.name.split('.').pop() || 'bin';
+        const path = `site-temp/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from('installation-site-media')
+          .upload(path, file, {
+            cacheControl: '3600',
+            upsert: false,
+          });
+        if (uploadError) {
+          throw uploadError;
+        }
+        const { data } = supabase.storage.from('installation-site-media').getPublicUrl(path);
+        const url = data.publicUrl;
+        const type: 'image' | 'video' = file.type.startsWith('video/') ? 'video' : 'image';
+        newMedia.push({ type, url, name: file.name });
+      }
+      setForm((prev) => ({
+        ...prev,
+        media: [...(prev.media ?? []), ...newMedia],
+      }));
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Failed to upload media. Please try again.');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[600] flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-[#111111] border border-[#333333] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl my-8">
+        <div className="p-6 border-b border-[#333333] flex items-center justify-between">
+          <h2 className="text-xl font-bold text-white">{isEdit ? 'Edit Site' : 'Add Site'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white p-1 transition-colors">
+            <i className="fas fa-times text-xl"></i>
+          </button>
+        </div>
+        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+          {submitError && (
+            <div className="px-4 py-2 rounded-lg bg-red-900/30 border border-red-800/50 text-red-400 text-sm font-bold">
+              {submitError}
+            </div>
+          )}
+          <div>
+            <label className={labelClass}>Site Name *</label>
+            <input
+              type="text"
+              value={form.site_name}
+              onChange={(e) => setForm({ ...form, site_name: e.target.value })}
+              className={inputClass}
+              placeholder="e.g. Mick's Café"
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Address *</label>
+            <input
+              type="text"
+              value={form.address}
+              onChange={(e) => setForm({ ...form, address: e.target.value })}
+              className={inputClass}
+              placeholder="101 Ragland Road"
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Postcode *</label>
+            <input
+              type="text"
+              value={form.postcode}
+              onChange={(e) => setForm({ ...form, postcode: e.target.value })}
+              className={inputClass}
+              placeholder="B66 3ND"
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Contact Name *</label>
+            <input
+              type="text"
+              value={form.contact_name}
+              onChange={(e) => setForm({ ...form, contact_name: e.target.value })}
+              className={inputClass}
+              placeholder="e.g. Mick"
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Contact Number *</label>
+            <input
+              type="tel"
+              value={form.contact_phone}
+              onChange={(e) => setForm({ ...form, contact_phone: e.target.value })}
+              className={inputClass}
+              placeholder="07123456789"
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Contact Email</label>
+            <input
+              type="email"
+              value={form.contact_email || ''}
+              onChange={(e) => setForm({ ...form, contact_email: e.target.value })}
+              className={inputClass}
+              placeholder="mick@example.com"
+            />
+          </div>
+          <div>
+            <label className={labelClass}>What is required on this site (equipment, access, etc.)</label>
+            <textarea
+              rows={3}
+              value={form.equipment_required || ''}
+              onChange={(e) => setForm({ ...form, equipment_required: e.target.value })}
+              className={`${inputClass} resize-none`}
+              placeholder="List required equipment, access notes, special considerations..."
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Photos / Videos (optional)</label>
+            <input
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              onChange={handleMediaChange}
+              className="block w-full text-sm text-gray-300 file:mr-3 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-[#F2C200] file:text-black hover:file:brightness-110 cursor-pointer"
+            />
+            <p className="mt-1 text-[11px] text-gray-500">
+              Up to {MAX_MEDIA_FILES} files. Max {MAX_FILE_MB} MB per file.
+            </p>
+            {uploadError && <p className="mt-1 text-xs text-red-400 font-bold">{uploadError}</p>}
+            {uploading && <p className="mt-1 text-xs text-gray-400 font-bold">Uploading files...</p>}
+            {form.media && form.media.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-[11px] text-gray-400 font-bold">Attached files (click to view):</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {form.media.map((m, idx) => (
+                    <button
+                      key={`${m.url}-${idx}`}
+                      type="button"
+                      onClick={() => setMediaPreview(m)}
+                      className="relative group aspect-square rounded-lg overflow-hidden border border-[#333333] hover:border-[#F2C200] transition-colors"
+                    >
+                      {m.type === 'image' ? (
+                        <img src={m.url} alt={m.name || 'Site media'} className="w-full h-full object-cover" />
+                      ) : (
+                        <video src={m.url} className="w-full h-full object-cover" muted />
+                      )}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] font-bold text-white transition-opacity">
+                        View {m.type === 'image' ? 'Image' : 'Video'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <ul className="space-y-0.5 text-[11px] text-gray-400">
+                  {form.media.map((m, idx) => (
+                    <li key={`name-${m.url}-${idx}`} className="truncate">
+                      <span className="uppercase mr-1 text-[#F2C200]">[{m.type}]</span>
+                      {m.name || m.url}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="p-6 border-t border-[#333333] flex items-center justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-5 py-2.5 rounded-lg font-bold text-sm bg-transparent border border-[#333333] text-gray-300 hover:border-[#F2C200] hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-sm bg-[#F2C200] text-black hover:brightness-110 disabled:opacity-60 transition-colors shadow-lg shadow-[#F2C2001A]"
+          >
+            {submitting ? (
+              <>
+                <i className="fas fa-spinner fa-spin text-sm"></i>
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <i className="fas fa-check text-sm"></i>
+                <span>{isEdit ? 'Update Site' : 'Add Site'}</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {mediaPreview && (
+        <div className="fixed inset-0 bg-black/90 z-[700] flex items-center justify-center p-4" onClick={() => setMediaPreview(null)}>
+          <div
+            className="relative max-w-5xl max-h-[90vh] w-full flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {mediaPreview.type === 'image' ? (
+              <img src={mediaPreview.url} alt={mediaPreview.name || 'Site media'} className="max-w-full max-h-[80vh] object-contain" />
+            ) : (
+              <video src={mediaPreview.url} controls className="max-w-full max-h-[80vh] bg-black" />
+            )}
+            <div className="absolute bottom-3 left-3 flex gap-2">
+              <a
+                href={mediaPreview.url}
+                download={mediaPreview.name || 'site-media'}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-black/70 text-xs font-bold text-white hover:bg-black"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <i className="fas fa-download text-xs" />
+                <span>Download</span>
+              </a>
+            </div>
+            <button
+              onClick={() => setMediaPreview(null)}
+              className="absolute top-2 right-2 bg-black/70 hover:bg-black text-white rounded-full p-2"
+            >
+              <i className="fas fa-times" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

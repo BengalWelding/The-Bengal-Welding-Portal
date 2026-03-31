@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { Job } from '../types';
 import { useAdmin } from '../contexts/AdminContext';
 import { listServiceRequestsForAdmin } from '../lib/serviceRequests';
-import { listInstallationSites } from '../lib/installationSites';
+import { listInstallationSites, type InstallationSite } from '../lib/installationSites';
+import SiteUpsertModal from '../components/SiteUpsertModal';
 
 const TR19_REPORTS_STORAGE_KEY = 'bengal_tr19_reports';
 const SITE_STATUS_OVERRIDES_KEY = 'bengal_site_status_overrides';
@@ -59,7 +60,7 @@ type CalendarViewMode = 'day' | 'week' | 'month';
 
 const AdminDashboardHome: React.FC = () => {
   const { jobs, setJobs, saveJob, refreshJobs, openAddJobModal, openAddSiteTypeModal } = useAdmin();
-  const [installationSiteIds, setInstallationSiteIds] = useState<string[]>([]);
+  const [installationSites, setInstallationSites] = useState<InstallationSite[]>([]);
   const [scheduledMap, setScheduledMap] = useState<Record<string, ScheduledRenewal>>(() => {
     try {
       const stored = localStorage.getItem(SCHEDULED_STORAGE_KEY);
@@ -84,6 +85,8 @@ const AdminDashboardHome: React.FC = () => {
   const [duration, setDuration] = useState(2);
   const [jobType, setJobType] = useState('TR19 Grease Clean (Kitchen Extract)');
   const [allDetailsJob, setAllDetailsJob] = useState<Job | null>(null);
+  const [siteModalOpen, setSiteModalOpen] = useState(false);
+  const [editingSite, setEditingSite] = useState<InstallationSite | null>(null);
   const [siteStatusOverrides, setSiteStatusOverrides] = useState<Record<string, 'OVERDUE' | 'DUE_SOON' | 'ACTIVE_SITE' | 'COMPLETED'>>(() => {
     try {
       const raw = localStorage.getItem(SITE_STATUS_OVERRIDES_KEY);
@@ -121,11 +124,11 @@ const AdminDashboardHome: React.FC = () => {
   useEffect(() => {
     listInstallationSites()
       .then((installationSites) => {
-        setInstallationSiteIds(installationSites.map((s) => s.id));
+        setInstallationSites(installationSites);
       })
       .catch(() => {
         // If Supabase is misconfigured/offline, keep dashboard functional with safe defaults.
-        setInstallationSiteIds([]);
+        setInstallationSites([]);
       });
   }, []);
 
@@ -177,11 +180,27 @@ const AdminDashboardHome: React.FC = () => {
   const getPostcode = (job: Job) =>
     job.customerPostcode || (job.customerAddress ? job.customerAddress.split(',').pop()?.trim() || '' : '');
 
+  const installationSiteIds = useMemo(() => installationSites.map((s) => s.id), [installationSites]);
   const installationSiteIdSet = useMemo(() => new Set(installationSiteIds), [installationSiteIds]);
   const activeSiteCount = useMemo(() => {
     const completedCount = installationSiteIds.filter((id) => siteStatusOverrides[id] === 'COMPLETED').length;
     return Math.max(installationSiteIds.length - completedCount, 0);
   }, [installationSiteIds, siteStatusOverrides]);
+
+  const openEditSiteForJob = (job: Job) => {
+    const siteId = job.customerId;
+    if (!siteId) {
+      setAllDetailsJob(job);
+      return;
+    }
+    const site = installationSites.find((s) => s.id === siteId) || null;
+    if (!site) {
+      setAllDetailsJob(job);
+      return;
+    }
+    setEditingSite(site);
+    setSiteModalOpen(true);
+  };
 
   const calendarJobClassName = (job: Job): string => {
     const type = (job.jobType || '').trim();
@@ -622,8 +641,10 @@ const AdminDashboardHome: React.FC = () => {
                 {selectedJobsForDay.length > 0 && (
                   <div className="space-y-2">
                     {selectedJobsForDay.map((job) => (
-                      <div
+                      <button
                         key={job.id}
+                        type="button"
+                        onClick={() => openEditSiteForJob(job)}
                         className={`flex items-center justify-between px-3 py-2 hover:bg-[#111111]/80 group ${calendarJobClassName(job)}`}
                       >
                         <div className="min-w-0">
@@ -653,7 +674,10 @@ const AdminDashboardHome: React.FC = () => {
                           </span>
                           <button
                             type="button"
-                            onClick={() => setAllDetailsJob(job)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditSiteForJob(job);
+                            }}
                             className="text-[10px] font-bold px-2 py-1 rounded-md bg-[#333333] text-[#F2C200] hover:bg-[#F2C200]/20 transition-colors"
                           >
                             View job
@@ -662,7 +686,7 @@ const AdminDashboardHome: React.FC = () => {
                             <span className="text-xs font-bold text-[#F2C200]">£{job.amount.toLocaleString()}</span>
                           )}
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -723,7 +747,7 @@ const AdminDashboardHome: React.FC = () => {
                           <button
                             key={job.id}
                             type="button"
-                            onClick={() => setAllDetailsJob(job)}
+                            onClick={() => openEditSiteForJob(job)}
                             className={`block w-full text-left px-2 py-1 text-[10px] font-bold text-white truncate ${calendarJobClassName(job)}`}
                             title={job.customerName || job.title || job.id}
                           >
@@ -824,7 +848,7 @@ const AdminDashboardHome: React.FC = () => {
                             <button
                               key={job.id}
                               type="button"
-                              onClick={() => setAllDetailsJob(job)}
+                              onClick={() => openEditSiteForJob(job)}
                               className={`block w-full text-left px-2 py-1 text-[10px] font-bold text-white truncate ${calendarJobClassName(job)}`}
                               title={job.customerName || job.title || job.id}
                             >
@@ -862,7 +886,7 @@ const AdminDashboardHome: React.FC = () => {
             {renewalItems.slice(0, 6).map((item) => (
               <Link
                 key={item.id}
-                to="/dashboard/sites"
+                to={`/dashboard/sites?siteId=${encodeURIComponent(item.customerId || item.id)}`}
                 className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors group"
               >
                 <div className="flex items-center gap-4 min-w-0">
@@ -1058,6 +1082,24 @@ const AdminDashboardHome: React.FC = () => {
           </div>
         </div>
       )}
+
+      <SiteUpsertModal
+        open={siteModalOpen}
+        mode="edit"
+        initialSite={editingSite}
+        onClose={() => {
+          setSiteModalOpen(false);
+          setEditingSite(null);
+        }}
+        onSaved={async () => {
+          try {
+            const refreshed = await listInstallationSites();
+            setInstallationSites(refreshed);
+          } catch {
+            // ignore
+          }
+        }}
+      />
 
       {/* Schedule Renewal Job Modal */}
       {scheduleModalOpen && scheduleSite && (
