@@ -81,6 +81,26 @@ function jobToRow(job: Job): Record<string, unknown> {
   };
 }
 
+function getSiteJobSortKey(job: Job): string {
+  return (job.startDate || job.warrantyEndDate || job.scheduledCleanDate || '').slice(0, 10);
+}
+
+/** Returns all jobs that belong to an installation site (`jobs.customer_id = installation_sites.id`). */
+export function jobsForSite(jobs: Job[], siteId: string): Job[] {
+  if (!siteId) return [];
+  return jobs.filter((job) => job.customerId === siteId);
+}
+
+/** Stable display sort: latest site jobs first, then id as tie-breaker. */
+export function sortJobsForSiteDisplay(jobs: Job[]): Job[] {
+  return [...jobs].sort((a, b) => {
+    const aKey = getSiteJobSortKey(a);
+    const bKey = getSiteJobSortKey(b);
+    if (aKey !== bKey) return bKey.localeCompare(aKey);
+    return (a.id || '').localeCompare(b.id || '');
+  });
+}
+
 export async function getJobById(id: string): Promise<Job | null> {
   const { data, error } = await supabase
     .from('jobs')

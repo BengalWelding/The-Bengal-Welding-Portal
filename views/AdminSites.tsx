@@ -7,7 +7,7 @@ import {
   deleteInstallationSite,
   type InstallationSite,
 } from '../lib/installationSites';
-import { deleteJobsForInstallationSiteId } from '../lib/jobs';
+import { deleteJobsForInstallationSiteId, jobsForSite, sortJobsForSiteDisplay } from '../lib/jobs';
 import { supabase } from '../lib/supabase';
 import { deleteUser } from '../lib/auth';
 import SiteUpsertModal from '../components/SiteUpsertModal';
@@ -161,11 +161,7 @@ const AdminSites: React.FC = () => {
         if (!j.warrantyEndDate) return false;
         const due = new Date(j.warrantyEndDate + (j.warrantyEndDate.length === 10 ? 'T12:00:00' : ''));
         if (Number.isNaN(due.getTime())) return false;
-        return (
-          due < now &&
-          due > new Date(0) &&
-          !jobsWithCompletedTR19.has(j.id)
-        );
+        return due < now && due > new Date(0) && !jobsWithCompletedTR19.has(j.id);
       }),
     [jobs, now, jobsWithCompletedTR19]
   );
@@ -176,11 +172,7 @@ const AdminSites: React.FC = () => {
         if (!j.warrantyEndDate) return false;
         const due = new Date(j.warrantyEndDate + (j.warrantyEndDate.length === 10 ? 'T12:00:00' : ''));
         if (Number.isNaN(due.getTime())) return false;
-        return (
-          due > now &&
-          due <= ninetyDaysFromNow &&
-          !jobsWithCompletedTR19.has(j.id)
-        );
+        return due > now && due <= ninetyDaysFromNow && !jobsWithCompletedTR19.has(j.id);
       }),
     [jobs, now, ninetyDaysFromNow, jobsWithCompletedTR19]
   );
@@ -196,8 +188,6 @@ const AdminSites: React.FC = () => {
   );
 
   const dueSoonSiteIds = useMemo(() => {
-    // A site should never be counted in both buckets. If any job is overdue,
-    // show it as overdue (and exclude it from due-soon).
     const ids = new Set<string>();
     for (const job of dueSoonJobsForFilter) {
       const id = job.customerId;
@@ -332,33 +322,18 @@ const AdminSites: React.FC = () => {
 
   const siteScheduleMap = useMemo(() => {
     const map: Record<string, { jobId: string; startDate: string; endDate: string }> = {};
-    for (const job of jobs) {
-      if (!job.customerId || !job.startDate) continue;
-      const siteId = job.customerId;
-      const start = job.startDate.slice(0, 10);
-      const end = (job.warrantyEndDate || job.startDate).slice(0, 10);
-      const existing = map[siteId];
-      if (!existing || start > existing.startDate) {
-        map[siteId] = { jobId: job.id, startDate: start, endDate: end };
-      }
+    for (const site of sites) {
+      const latest = sortJobsForSiteDisplay(jobsForSite(jobs, site.id)).find((job) => !!job.startDate);
+      if (!latest?.startDate) continue;
+      const start = latest.startDate.slice(0, 10);
+      const end = (latest.warrantyEndDate || latest.startDate).slice(0, 10);
+      map[site.id] = { jobId: latest.id, startDate: start, endDate: end };
     }
     return map;
-  }, [jobs]);
+  }, [jobs, sites]);
 
   const getLatestScheduledJobForSite = (siteId: string): Job | null => {
-    let latest: Job | null = null;
-    for (const j of jobs) {
-      if (!j.customerId || j.customerId !== siteId) continue;
-      if (!j.startDate) continue;
-      const start = j.startDate.slice(0, 10);
-      if (!latest) {
-        latest = j;
-        continue;
-      }
-      const latestStart = latest.startDate?.slice(0, 10) || '';
-      if (start > latestStart) latest = j;
-    }
-    return latest;
+    return sortJobsForSiteDisplay(jobsForSite(jobs, siteId)).find((job) => !!job.startDate) || null;
   };
 
   const openAdd = () => {
@@ -401,7 +376,7 @@ const AdminSites: React.FC = () => {
   const [scheduleJobId, setScheduleJobId] = useState<string | null>(null);
 
   const openScheduleForSite = (site: InstallationSite, jobId?: string) => {
-    const existing = jobId ? jobs.find((j) => j.id === jobId) || null : getLatestScheduledJobForSite(site.id);
+    const existing = jobId ? jobs.find((j) => j.id === jobId) || null : null;
     setScheduleSite(site);
     setScheduleJobId(existing?.id || null);
     setStartDate(existing?.startDate?.slice(0, 10) || '');
@@ -427,7 +402,7 @@ const AdminSites: React.FC = () => {
     const startStr = start.toISOString().slice(0, 10);
     const endStr = end.toISOString().slice(0, 10);
 
-    const existing = scheduleJobId ? jobs.find((j) => j.id === scheduleJobId) || null : getLatestScheduledJobForSite(scheduleSite.id);
+    const existing = scheduleJobId ? jobs.find((j) => j.id === scheduleJobId) || null : null;
     const nextJob: Job = existing
       ? {
           ...existing,
@@ -571,6 +546,17 @@ const AdminSites: React.FC = () => {
       </div>
 
       <div className="bg-[#111111] rounded-2xl border border-[#333333] overflow-x-auto">
+        <div className="mx-4 mt-4 px-3 py-2 rounded-lg border border-blue-900/40 bg-blue-950/30 text-[11px] text-blue-200 flex items-start gap-2">
+          <i className="fas fa-circle-info mt-[1px] text-blue-300" />
+          <span>
+            <strong>Scheduling from this page creates a new job.</strong> To change dates on an existing job, open{' '}
+            <Link to="/dashboard/jobs" className="text-[#F2C200] hover:text-white font-bold underline underline-offset-2">
+              Jobs
+            </Link>{' '}
+            and edit that specific job.
+            {' '}To add another job for the same site, click <strong>Schedule dates</strong> on that site again and save a new date range.
+          </span>
+        </div>
         {loadError && (
           <div className="mx-4 mt-4 px-4 py-3 rounded-lg bg-red-900/20 border border-red-800/40 text-red-300 text-sm font-bold">
             Unable to load sites: {loadError}
@@ -678,7 +664,7 @@ const AdminSites: React.FC = () => {
                         </button>
                       )}
                       <button
-                        onClick={() => openScheduleForSite(s, siteScheduleMap[s.id]?.jobId)}
+                        onClick={() => openScheduleForSite(s)}
                         disabled={getSiteStatus(s.id) === 'COMPLETED'}
                         className={`px-3 py-1.5 rounded-full text-xs font-bold hover:brightness-110 active:scale-95 transition-all ${
                           getSiteStatus(s.id) === 'COMPLETED'
@@ -696,6 +682,16 @@ const AdminSites: React.FC = () => {
                         }
                       >
                         {siteScheduleMap[s.id] ? 'Dates confirmed' : 'Schedule dates'}
+                      </button>
+                      <button
+                        onClick={() =>
+                          navigate(`/dashboard/jobs?siteId=${encodeURIComponent(s.id)}&siteName=${encodeURIComponent(s.site_name)}`)
+                        }
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs bg-[#1A1A1A] border border-[#333333] text-gray-300 hover:border-[#F2C200] hover:text-white transition-all"
+                        title="View all jobs for this site"
+                      >
+                        <i className="fas fa-briefcase text-[10px]"></i>
+                        View jobs
                       </button>
                       <button
                         onClick={() => openEdit(s)}

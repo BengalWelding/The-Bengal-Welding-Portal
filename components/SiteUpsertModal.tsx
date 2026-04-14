@@ -9,6 +9,7 @@ import {
 } from '../lib/installationSites';
 import { createCustomer, deleteUser, updateCustomer } from '../lib/auth';
 import { useAdmin } from '../contexts/AdminContext';
+import { jobsForSite, sortJobsForSiteDisplay } from '../lib/jobs';
 import PhoneCallButton from './PhoneCallButton';
 import type { Job } from '../types';
 
@@ -87,20 +88,47 @@ export default function SiteUpsertModal({ open, mode, initialSite, onClose, onSa
   const [mediaPreview, setMediaPreview] = useState<
     { type: 'image' | 'video'; url: string; name?: string } | null
   >(null);
+  const [selectedPrefillKey, setSelectedPrefillKey] = useState('');
 
   const existingJobForSite = useMemo(() => {
     const siteId = initialSite?.id;
     if (!siteId) return null;
     const direct = jobs.find((j) => j.id === siteId) || null;
     if (direct) return direct;
-    const matches = jobs.filter((j) => j.customerId === siteId);
+    const matches = sortJobsForSiteDisplay(jobsForSite(jobs, siteId));
     if (matches.length === 0) return null;
-    return matches.reduce<Job>((best, j) => {
-      const bestKey = (best.startDate || best.warrantyEndDate || '').slice(0, 10);
-      const jKey = (j.startDate || j.warrantyEndDate || '').slice(0, 10);
-      return jKey > bestKey ? j : best;
-    }, matches[0]);
+    return matches[0];
   }, [initialSite?.id, jobs]);
+
+  const siteJobsCount = useMemo(() => {
+    const siteId = initialSite?.id;
+    if (!siteId) return 0;
+    return jobsForSite(jobs, siteId).length;
+  }, [initialSite?.id, jobs]);
+
+  const sitePrefillOptions = useMemo(
+    () =>
+      Array.from(
+        jobs.reduce((map, job) => {
+          const key = job.customerId || job.customerName || job.id;
+          if (!key || map.has(key)) return map;
+          map.set(key, {
+            key,
+            site_name: job.customerName || '',
+            address: job.customerAddress || '',
+            postcode: job.customerPostcode || '',
+            contact_name: job.contactName || '',
+            contact_phone: job.customerPhone || '',
+            contact_email: job.customerEmail || '',
+            equipment_required: job.equipmentRequired || '',
+          });
+          return map;
+        }, new Map<string, InstallationSiteInsert & { key: string }>())
+      )
+        .map(([_, option]) => option)
+        .sort((a, b) => (a.site_name || '').localeCompare(b.site_name || '', undefined, { sensitivity: 'base' })),
+    [jobs]
+  );
 
   const [jobDates, setJobDates] = useState<{ startDate: string; warrantyEndDate: string }>({
     startDate: '',
@@ -131,9 +159,26 @@ export default function SiteUpsertModal({ open, mode, initialSite, onClose, onSa
     });
     setSubmitError(null);
     setUploadError(null);
+    setSelectedPrefillKey('');
   }, [open, initialSite?.id, existingJobForSite?.id]);
 
   if (!open) return null;
+
+  const applySitePrefill = (key: string) => {
+    setSelectedPrefillKey(key);
+    const selected = sitePrefillOptions.find((option) => option.key === key);
+    if (!selected) return;
+    setForm((prev) => ({
+      ...prev,
+      site_name: selected.site_name || prev.site_name || '',
+      address: selected.address || prev.address || '',
+      postcode: selected.postcode || prev.postcode || '',
+      contact_name: selected.contact_name || prev.contact_name || '',
+      contact_phone: selected.contact_phone || prev.contact_phone || '',
+      contact_email: selected.contact_email || prev.contact_email || '',
+      equipment_required: selected.equipment_required || prev.equipment_required || '',
+    }));
+  };
 
   const handleSubmit = async () => {
     if (!form.site_name.trim()) {
@@ -211,10 +256,14 @@ export default function SiteUpsertModal({ open, mode, initialSite, onClose, onSa
         }
       }
 
+      const canSyncSingleJob = siteJobsCount <= 1;
       const shouldUpsertJobDates =
-        jobDates.startDate.trim() !== '' ||
-        jobDates.warrantyEndDate.trim() !== '' ||
-        !!existingJobForSite;
+        canSyncSingleJob &&
+        (
+          jobDates.startDate.trim() !== '' ||
+          jobDates.warrantyEndDate.trim() !== '' ||
+          !!existingJobForSite
+        );
 
       if (shouldUpsertJobDates) {
         const base: Job =
@@ -352,6 +401,28 @@ export default function SiteUpsertModal({ open, mode, initialSite, onClose, onSa
             <p className="text-xs text-amber-200/90 bg-amber-950/40 border border-amber-800/40 rounded-lg px-3 py-2 leading-relaxed">
               Site name, address, and contact details sync to the linked portal customer when you save.
             </p>
+          )}
+          {isEdit && siteJobsCount > 1 && (
+            <p className="text-xs text-blue-200/90 bg-blue-950/40 border border-blue-800/40 rounded-lg px-3 py-2 leading-relaxed">
+              This site has multiple jobs. Site details will be saved only; manage job dates from the Sites page.
+            </p>
+          )}
+          {!isEdit && (
+            <div>
+              <label className={labelClass}>Select Existing Site/Job (optional)</label>
+              <select
+                value={selectedPrefillKey}
+                onChange={(e) => applySitePrefill(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Type manually or choose to prefill...</option>
+                {sitePrefillOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.site_name || option.key}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
           <div>
             <label className={labelClass}>Site Name *</label>

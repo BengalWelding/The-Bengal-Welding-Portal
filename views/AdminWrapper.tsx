@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { JobStatus, Job } from '../types';
 import { getAllUsers, registerEmployee } from '../lib/auth';
@@ -15,6 +15,17 @@ interface CustomerProfile {
   email: string;
   phone: string;
   address: string;
+}
+
+interface JobPrefillOption {
+  key: string;
+  customerId: string;
+  customerName: string;
+  customerAddress: string;
+  customerPostcode: string;
+  contactName: string;
+  customerEmail: string;
+  customerPhone: string;
 }
 
 interface AdminWrapperProps {
@@ -107,6 +118,30 @@ const AdminWrapper: React.FC<AdminWrapperProps> = ({ user, onLogout }) => {
       new Map<string, CustomerProfile>()
     )
   ).map(([_, data]) => data);
+
+  const jobPrefillOptions: JobPrefillOption[] = useMemo(
+    () =>
+      Array.from(
+        jobs.reduce((map, job) => {
+          const key = job.customerId || job.customerName || job.id;
+          if (!key || map.has(key)) return map;
+          map.set(key, {
+            key,
+            customerId: job.customerId || '',
+            customerName: job.customerName || '',
+            customerAddress: job.customerAddress || '',
+            customerPostcode: job.customerPostcode || '',
+            contactName: job.contactName || '',
+            customerEmail: job.customerEmail || '',
+            customerPhone: job.customerPhone || '',
+          });
+          return map;
+        }, new Map<string, JobPrefillOption>())
+      )
+        .map(([_, option]) => option)
+        .sort((a, b) => (a.customerName || '').localeCompare(b.customerName || '', undefined, { sensitivity: 'base' })),
+    [jobs]
+  );
 
   const updateStatus = (id: string, newStatus: JobStatus) => {
     setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status: newStatus } : j)));
@@ -395,6 +430,7 @@ const AdminWrapper: React.FC<AdminWrapperProps> = ({ user, onLogout }) => {
             jobForm={jobForm}
             setJobForm={setJobForm}
             editingJobId={editingJobId}
+            prefillOptions={jobPrefillOptions}
             onSave={handleSaveJob}
             onClose={() => setIsJobModalOpen(false)}
           />
@@ -746,15 +782,35 @@ function JobModal({
   jobForm,
   setJobForm,
   editingJobId,
+  prefillOptions,
   onSave,
   onClose,
 }: {
   jobForm: Partial<Job>;
   setJobForm: React.Dispatch<React.SetStateAction<Partial<Job>>>;
   editingJobId: string | null;
+  prefillOptions: JobPrefillOption[];
   onSave: () => void;
   onClose: () => void;
 }) {
+  const [selectedPrefillKey, setSelectedPrefillKey] = useState('');
+
+  const applyPrefill = (key: string) => {
+    setSelectedPrefillKey(key);
+    const selected = prefillOptions.find((option) => option.key === key);
+    if (!selected) return;
+    setJobForm((prev) => ({
+      ...prev,
+      customerId: selected.customerId || prev.customerId || '',
+      customerName: selected.customerName || prev.customerName || '',
+      customerAddress: selected.customerAddress || prev.customerAddress || '',
+      customerPostcode: selected.customerPostcode || prev.customerPostcode || '',
+      contactName: selected.contactName || prev.contactName || '',
+      customerEmail: selected.customerEmail || prev.customerEmail || '',
+      customerPhone: selected.customerPhone || prev.customerPhone || '',
+    }));
+  };
+
   return (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4">
       <div className="bg-[#111111] border border-[#333333] rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -765,6 +821,21 @@ function JobModal({
           </button>
         </div>
         <div className="p-8 space-y-5">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Select Existing Site (optional)</label>
+            <select
+              value={selectedPrefillKey}
+              onChange={(e) => applyPrefill(e.target.value)}
+              className="w-full p-4 bg-black border border-[#333333] text-white rounded-xl focus:ring-1 focus:ring-[#F2C200] outline-none"
+            >
+              <option value="">Type manually or choose to prefill...</option>
+              {prefillOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.customerName || option.customerId}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Site Name *</label>
             <input

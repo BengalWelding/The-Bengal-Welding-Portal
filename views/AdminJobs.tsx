@@ -1,19 +1,42 @@
-import React, { useState, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
-import { Job, JobStatus } from '../types';
+import { Job } from '../types';
 import { getSiteName, getJobIdentifierAndService, getSiteAddress } from '../utils/jobIdentity';
 import PhoneCallButton from '../components/PhoneCallButton';
 
 const SURVEYS_STORAGE_KEY = 'bengal_surveys';
 const TR19_REPORTS_STORAGE_KEY = 'bengal_tr19_reports';
+const JOB_STATUS_OVERRIDES_KEY = 'bengal_job_status_overrides';
 
-type StatusFilter = JobStatus | 'ALL';
+type JobLifecycleStatus = 'OVERDUE' | 'DUE_SOON' | 'ACTIVE' | 'COMPLETED';
+type StatusFilter = JobLifecycleStatus | 'ALL';
 
 const AdminJobs: React.FC = () => {
   const { jobs, searchQuery, setSearchQuery, handleDeleteJob, openAddJobModal, openEditJobModal, openAddSiteTypeModal, updateStatus } = useAdmin();
   const navigate = useNavigate();
+  const location = useLocation();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [jobStatusOverrides, setJobStatusOverrides] = useState<Record<string, JobLifecycleStatus>>(() => {
+    try {
+      const raw = localStorage.getItem(JOB_STATUS_OVERRIDES_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as Record<string, JobLifecycleStatus>;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const selectedSiteId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('siteId') || '';
+  }, [location.search]);
+
+  const selectedSiteName = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('siteName') || '';
+  }, [location.search]);
 
   const surveys = useMemo(() => {
     try {
@@ -52,58 +75,72 @@ const AdminJobs: React.FC = () => {
   const matchesSearch = (text?: string) =>
     !searchQuery || (text || '').toLowerCase().includes(searchQuery.toLowerCase());
 
+  const matchesSiteFilter = (job: Job) => !selectedSiteId || job.customerId === selectedSiteId;
+
+  const matchesJobSearch = (job: Job) =>
+    matchesSearch(job.title) ||
+    matchesSearch(job.customerName) ||
+    matchesSearch(job.customerId) ||
+    matchesSearch(job.id) ||
+    matchesSearch(job.contactName) ||
+    matchesSearch(job.description) ||
+    matchesSearch(job.jobType) ||
+    matchesSearch((job as Job & { certificateNumber?: string }).certificateNumber) ||
+    matchesSearch(job.customerAddress) ||
+    matchesSearch(job.customerPostcode) ||
+    matchesSearch(job.customerEmail);
+
+  const getJobLifecycleStatus = (job: Job): JobLifecycleStatus => {
+    if (job.status === 'COMPLETED') return 'COMPLETED';
+    const dueStr = (job.warrantyEndDate || '').slice(0, 10);
+    if (!dueStr) return 'ACTIVE';
+    const due = new Date(dueStr + 'T12:00:00');
+    if (Number.isNaN(due.getTime())) return 'ACTIVE';
+    const now = new Date();
+    const ninetyDaysFromNow = new Date();
+    ninetyDaysFromNow.setDate(ninetyDaysFromNow.getDate() + 90);
+    if (due < now) return 'OVERDUE';
+    if (due <= ninetyDaysFromNow) return 'DUE_SOON';
+    return 'ACTIVE';
+  };
+
+  const getJobStatus = (job: Job): JobLifecycleStatus =>
+    jobStatusOverrides[job.id] || getJobLifecycleStatus(job);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(JOB_STATUS_OVERRIDES_KEY, JSON.stringify(jobStatusOverrides));
+    } catch {
+      // ignore
+    }
+  }, [jobStatusOverrides]);
+
   const jobsByStatus = useMemo(() => {
-    const base = jobs.filter(
-      (j) =>
-        matchesSearch(j.title) ||
-        matchesSearch(j.customerName) ||
-        matchesSearch(j.customerId) ||
-        matchesSearch(j.id) ||
-        matchesSearch(j.contactName) ||
-        matchesSearch(j.description) ||
-        matchesSearch(j.jobType) ||
-        matchesSearch((j as Job & { certificateNumber?: string }).certificateNumber) ||
-        matchesSearch(j.customerAddress) ||
-        matchesSearch(j.customerPostcode) ||
-        matchesSearch(j.customerEmail)
-    );
+    const base = jobs.filter((j) => matchesSiteFilter(j) && matchesJobSearch(j));
     return {
       ALL: base.length,
-      PENDING: base.filter((j) => j.status === 'PENDING').length,
-      IN_PROGRESS: base.filter((j) => j.status === 'IN_PROGRESS').length,
-      COMPLETED: base.filter((j) => j.status === 'COMPLETED').length,
-      CANCELLED: base.filter((j) => j.status === 'CANCELLED').length,
+      OVERDUE: base.filter((j) => getJobStatus(j) === 'OVERDUE').length,
+      DUE_SOON: base.filter((j) => getJobStatus(j) === 'DUE_SOON').length,
+      ACTIVE: base.filter((j) => getJobStatus(j) === 'ACTIVE').length,
+      COMPLETED: base.filter((j) => getJobStatus(j) === 'COMPLETED').length,
     };
-  }, [jobs, searchQuery]);
+  }, [jobs, searchQuery, selectedSiteId, jobStatusOverrides]);
 
   const filteredJobs = jobs
-    .filter(
-      (j) =>
-        matchesSearch(j.title) ||
-        matchesSearch(j.customerName) ||
-        matchesSearch(j.customerId) ||
-        matchesSearch(j.id) ||
-        matchesSearch(j.contactName) ||
-        matchesSearch(j.description) ||
-        matchesSearch(j.jobType) ||
-        matchesSearch((j as Job & { certificateNumber?: string }).certificateNumber) ||
-        matchesSearch(j.customerAddress) ||
-        matchesSearch(j.customerPostcode) ||
-        matchesSearch(j.customerEmail)
-    )
-    .filter((j) => (statusFilter === 'ALL' ? true : j.status === statusFilter))
+    .filter((j) => matchesSiteFilter(j) && matchesJobSearch(j))
+    .filter((j) => (statusFilter === 'ALL' ? true : getJobStatus(j) === statusFilter))
     .sort((a, b) => getSiteName(a).localeCompare(getSiteName(b), undefined, { sensitivity: 'base' }));
 
-  const getStatusStyles = (status: JobStatus) => {
+  const getStatusStyles = (status: JobLifecycleStatus) => {
     switch (status) {
-      case 'PENDING':
-        return 'bg-orange-900/30 text-orange-400 border-orange-800/50';
-      case 'IN_PROGRESS':
-        return 'bg-blue-900/30 text-blue-400 border-blue-800/50';
-      case 'COMPLETED':
-        return 'bg-green-900/30 text-green-400 border-green-800/50';
-      case 'CANCELLED':
+      case 'OVERDUE':
         return 'bg-red-900/30 text-red-400 border-red-800/50';
+      case 'DUE_SOON':
+        return 'bg-amber-900/30 text-amber-400 border-amber-800/50';
+      case 'ACTIVE':
+        return 'bg-green-900/30 text-green-400 border-green-800/50';
+      case 'COMPLETED':
+        return 'bg-slate-900/40 text-slate-300 border-slate-700/60';
       default:
         return 'bg-gray-800 text-gray-400 border-gray-700';
     }
@@ -117,10 +154,10 @@ const AdminJobs: React.FC = () => {
             <h1 className="text-2xl font-black text-[#F2C200] tracking-tight">Jobs</h1>
             <p className="text-gray-500 text-sm font-bold mt-0.5">
               {statusFilter === 'ALL' && `${jobsByStatus.ALL} job${jobsByStatus.ALL !== 1 ? 's' : ''}`}
-              {statusFilter === 'PENDING' && `${jobsByStatus.PENDING} pending`}
-              {statusFilter === 'IN_PROGRESS' && `${jobsByStatus.IN_PROGRESS} in progress`}
+              {statusFilter === 'OVERDUE' && `${jobsByStatus.OVERDUE} overdue`}
+              {statusFilter === 'DUE_SOON' && `${jobsByStatus.DUE_SOON} due soon`}
+              {statusFilter === 'ACTIVE' && `${jobsByStatus.ACTIVE} active`}
               {statusFilter === 'COMPLETED' && `${jobsByStatus.COMPLETED} completed`}
-              {statusFilter === 'CANCELLED' && `${jobsByStatus.CANCELLED} cancelled`}
             </p>
           </div>
           <button
@@ -136,10 +173,10 @@ const AdminJobs: React.FC = () => {
           {(
             [
               { id: 'ALL' as const, label: 'All', icon: 'fa-briefcase' },
-              { id: 'PENDING' as const, label: 'Pending', icon: 'fa-clock' },
-              { id: 'IN_PROGRESS' as const, label: 'In Progress', icon: 'fa-spinner' },
+              { id: 'OVERDUE' as const, label: 'Overdue', icon: 'fa-triangle-exclamation' },
+              { id: 'DUE_SOON' as const, label: 'Due Soon', icon: 'fa-clock' },
+              { id: 'ACTIVE' as const, label: 'Active', icon: 'fa-building' },
               { id: 'COMPLETED' as const, label: 'Completed', icon: 'fa-check' },
-              { id: 'CANCELLED' as const, label: 'Cancelled', icon: 'fa-times' },
             ] as const
           ).map(({ id, label, icon }) => (
             <button
@@ -148,14 +185,14 @@ const AdminJobs: React.FC = () => {
               onClick={() => setStatusFilter(id)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${
                 statusFilter === id
-                  ? id === 'CANCELLED'
-                    ? 'bg-red-500/10 border-red-500 text-red-400'
-                    : id === 'COMPLETED'
+                  ? id === 'COMPLETED'
+                    ? 'bg-slate-500/10 border-slate-400 text-slate-300'
+                    : id === 'ACTIVE'
                       ? 'bg-green-500/10 border-green-500 text-green-400'
-                      : id === 'IN_PROGRESS'
-                        ? 'bg-blue-500/10 border-blue-500 text-blue-400'
-                        : id === 'PENDING'
-                          ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                      : id === 'DUE_SOON'
+                        ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                        : id === 'OVERDUE'
+                          ? 'bg-red-500/10 border-red-500 text-red-400'
                           : 'bg-[#F2C200]/10 border-[#F2C200] text-[#F2C200]'
                   : 'bg-[#111111] border-[#333333] text-gray-400 hover:border-[#F2C200] hover:text-white'
               }`}
@@ -176,6 +213,21 @@ const AdminJobs: React.FC = () => {
             className="w-full pl-10 pr-4 py-2 bg-[#111111] border border-[#333333] rounded-full text-sm text-white focus:outline-none focus:border-[#F2C200]"
           />
         </div>
+        {selectedSiteId && (
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#333333] bg-[#111111] text-[11px] font-bold text-gray-300">
+              <i className="fas fa-filter text-[10px]"></i>
+              Site filter: {selectedSiteName || selectedSiteId}
+            </span>
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard/jobs')}
+              className="text-xs font-bold text-[#F2C200] hover:text-white transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       {jobsNeedingReport.length > 0 && (
@@ -186,21 +238,8 @@ const AdminJobs: React.FC = () => {
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {jobsNeedingReport
-              .filter(
-                (j) =>
-                  matchesSearch(j.title) ||
-                  matchesSearch(j.customerName) ||
-                  matchesSearch(j.customerId) ||
-                  matchesSearch(j.id) ||
-                  matchesSearch(j.contactName) ||
-                  matchesSearch(j.description) ||
-                  matchesSearch(j.jobType) ||
-                  matchesSearch((j as Job & { certificateNumber?: string }).certificateNumber) ||
-                  matchesSearch(j.customerAddress) ||
-                  matchesSearch(j.customerPostcode) ||
-                  matchesSearch(j.customerEmail)
-              )
-              .filter((j) => (statusFilter === 'ALL' ? true : j.status === statusFilter))
+              .filter((j) => matchesSiteFilter(j) && matchesJobSearch(j))
+              .filter((j) => (statusFilter === 'ALL' ? true : getJobLifecycleStatus(j) === statusFilter))
               .map((job) => (
                 <div
                   key={job.id}
@@ -284,17 +323,25 @@ const AdminJobs: React.FC = () => {
                     ) : null}
                   </td>
                   <td className="px-6 py-4">
-                    <div className={`inline-flex items-center px-3 py-1.5 rounded-full border ${getStatusStyles(job.status)}`}>
+                    <div className={`inline-flex items-center px-3 py-1.5 rounded-full border ${getStatusStyles(getJobStatus(job))}`}>
                       <select
-                        value={job.status}
-                        onChange={(e) => updateStatus(job.id, e.target.value as JobStatus)}
+                        value={getJobStatus(job)}
+                        onChange={(e) => {
+                          const next = e.target.value as JobLifecycleStatus;
+                          setJobStatusOverrides((prev) => ({ ...prev, [job.id]: next }));
+                          if (next === 'COMPLETED') {
+                            updateStatus(job.id, 'COMPLETED');
+                          } else if (job.status === 'COMPLETED') {
+                            updateStatus(job.id, 'PENDING');
+                          }
+                        }}
                         className="bg-transparent text-[10px] font-bold uppercase tracking-widest focus:outline-none cursor-pointer appearance-none pr-4 relative z-10 text-inherit"
-                        aria-label={`Update status for job ${job.id}`}
+                        aria-label={`Update lifecycle status for job ${job.id}`}
                       >
-                        <option value="PENDING">Pending</option>
-                        <option value="IN_PROGRESS">In Progress</option>
+                        <option value="OVERDUE">Overdue</option>
+                        <option value="DUE_SOON">Due Soon</option>
+                        <option value="ACTIVE">Active</option>
                         <option value="COMPLETED">Completed</option>
-                        <option value="CANCELLED">Cancelled</option>
                       </select>
                       <i className="fas fa-chevron-down text-[8px] -ml-3 opacity-60"></i>
                     </div>
@@ -374,8 +421,9 @@ const AdminJobs: React.FC = () => {
         {filteredJobs.filter((j) => !jobHasSubmittedSurvey(j.id) || jobHasTR19Report(j.id)).length === 0 &&
           jobsNeedingReport.filter(
             (j) =>
+              matchesSiteFilter(j) &&
               (matchesSearch(j.title) || matchesSearch(j.customerName)) &&
-              (statusFilter === 'ALL' ? true : j.status === statusFilter)
+              (statusFilter === 'ALL' ? true : getJobStatus(j) === statusFilter)
           ).length === 0 && (
           <div className="px-6 py-16 text-center text-gray-500 font-bold">
             No jobs found. Schedule a job from the Dashboard.
