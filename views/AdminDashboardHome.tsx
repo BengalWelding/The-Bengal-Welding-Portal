@@ -874,18 +874,20 @@ const AdminDashboardHome: React.FC = () => {
                       </div>
                       <div className="flex-1 space-y-1 overflow-y-auto min-h-0">
                         {dayJobs.slice(0, 5).map((job) => (
-                          <div key={job.id} className={`flex items-stretch gap-0.5 min-w-0 ${calendarJobClassName(job)}`}>
-                            {canDragJobOnCalendar(job) && (
-                              <span
-                                draggable
-                                onDragStart={(e) => beginCalendarJobDrag(job.id, e)}
-                                className="shrink-0 flex items-center px-0.5 cursor-grab active:cursor-grabbing text-gray-600 hover:text-[#F2C200]"
-                                title="Drag to another day"
-                                aria-label={`Drag job ${job.customerName || job.title || job.id} to reschedule`}
-                              >
-                                <i className="fas fa-grip-vertical text-[9px]" />
-                              </span>
-                            )}
+                          <div
+                            key={job.id}
+                            draggable={canDragJobOnCalendar(job)}
+                            onDragStart={canDragJobOnCalendar(job) ? (e) => beginCalendarJobDrag(job.id, e) : undefined}
+                            className={`flex items-stretch gap-0.5 min-w-0 ${calendarJobClassName(job)} ${
+                              canDragJobOnCalendar(job) ? 'cursor-grab active:cursor-grabbing' : ''
+                            }`}
+                            title={canDragJobOnCalendar(job) ? 'Drag to another day' : undefined}
+                            aria-label={
+                              canDragJobOnCalendar(job)
+                                ? `Drag job ${job.customerName || job.title || job.id} to reschedule`
+                                : undefined
+                            }
+                          >
                             <button
                               type="button"
                               onClick={() => openEditSiteForJob(job)}
@@ -992,18 +994,20 @@ const AdminDashboardHome: React.FC = () => {
                         </button>
                         <div className="flex-1 space-y-1 overflow-y-auto mt-1 min-h-0">
                           {dayJobs.slice(0, 4).map((job) => (
-                            <div key={job.id} className={`flex items-stretch gap-0.5 min-w-0 ${calendarJobClassName(job)}`}>
-                              {canDragJobOnCalendar(job) && (
-                                <span
-                                  draggable
-                                  onDragStart={(e) => beginCalendarJobDrag(job.id, e)}
-                                  className="shrink-0 flex items-center px-0.5 cursor-grab active:cursor-grabbing text-gray-600 hover:text-[#F2C200]"
-                                  title="Drag to another day"
-                                  aria-label={`Drag job ${job.customerName || job.title || job.id} to reschedule`}
-                                >
-                                  <i className="fas fa-grip-vertical text-[9px]" />
-                                </span>
-                              )}
+                            <div
+                              key={job.id}
+                              draggable={canDragJobOnCalendar(job)}
+                              onDragStart={canDragJobOnCalendar(job) ? (e) => beginCalendarJobDrag(job.id, e) : undefined}
+                              className={`flex items-stretch gap-0.5 min-w-0 ${calendarJobClassName(job)} ${
+                                canDragJobOnCalendar(job) ? 'cursor-grab active:cursor-grabbing' : ''
+                              }`}
+                              title={canDragJobOnCalendar(job) ? 'Drag to another day' : undefined}
+                              aria-label={
+                                canDragJobOnCalendar(job)
+                                  ? `Drag job ${job.customerName || job.title || job.id} to reschedule`
+                                  : undefined
+                              }
+                            >
                               <button
                                 type="button"
                                 onClick={() => openEditSiteForJob(job)}
