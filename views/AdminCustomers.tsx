@@ -775,18 +775,15 @@ const AdminCustomers: React.FC = () => {
           ) : error ? (
             <div className="p-10 text-center text-red-400 font-bold text-sm">{error}</div>
           ) : (
-            <table className="w-full text-left min-w-[1040px]">
+            <table className="w-full text-left min-w-[760px]">
               <thead className="bg-[#1A1A1A] border-b border-[#333333]">
                 <tr>
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Account</th>
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Business Name</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Company Name</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">VAT Number</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Account Type</th>
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Balance</th>
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Contact</th>
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-center">Products</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                  <th className="sticky right-0 z-20 bg-[#1A1A1A] px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#333333]">
@@ -808,10 +805,15 @@ const AdminCustomers: React.FC = () => {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-white font-bold">{c.name}</td>
-                    <td className="px-6 py-4 text-xs text-gray-200 font-bold">{c.companyName || '-'}</td>
-                    <td className="px-6 py-4 text-xs text-gray-300 font-bold">{c.vatNumber || '-'}</td>
-                    <td className="px-6 py-4 text-xs text-gray-200 font-bold uppercase">{c.accountType || '-'}</td>
+                    <td className="px-6 py-4">
+                      <div className="min-w-0">
+                        <p className="text-white font-bold truncate">{c.name}</p>
+                        <p className="text-[10px] text-gray-400 font-bold truncate">
+                          Company: {c.companyName || '-'} • VAT: {c.vatNumber || '-'} • Type:{' '}
+                          {(c.accountType || '-').toUpperCase()}
+                        </p>
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-right text-xs text-gray-200 font-bold">
                       {typeof c.balance === 'number' ? c.balance.toFixed(2) : '-'}
                     </td>
@@ -831,7 +833,7 @@ const AdminCustomers: React.FC = () => {
                         {c.productsCount || 0}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="sticky right-0 z-10 bg-[#111111] px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
                           type="button"
@@ -863,7 +865,7 @@ const AdminCustomers: React.FC = () => {
                 ))}
                 {!loading && filteredByType.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center text-gray-500 font-bold text-sm">
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500 font-bold text-sm">
                       {balanceFilterActive
                         ? 'No customers with an outstanding balance match the current search and filters.'
                         : 'No customers found.'}

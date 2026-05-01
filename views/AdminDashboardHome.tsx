@@ -373,26 +373,28 @@ const AdminDashboardHome: React.FC = () => {
     .sort((a, b) => new Date(b.warrantyEndDate).getTime() - new Date(a.warrantyEndDate).getTime())
     .slice(0, 6);
 
-  const renewalItems = useMemo(() => {
-    const items: (Job & { isOverdue: boolean; daysText: string; scheduledDate?: string })[] = [];
-    for (const job of jobs) {
-      if (jobsWithCompletedTR19.has(job.id)) continue;
-      const dueDateStr = job.warrantyEndDate;
-      const dueDate = new Date(dueDateStr + (dueDateStr?.length === 10 ? 'T12:00:00' : ''));
-      const dueTime = dueDate.getTime();
-      const isOverdue = dueTime < now.getTime();
-      const isDueWithin90Days = dueTime <= ninetyDaysFromNow.getTime();
-      if (!isOverdue && !isDueWithin90Days) continue;
-      const diff = Math.floor((dueTime - now.getTime()) / (1000 * 60 * 60 * 24));
-      items.push({
-        ...job,
-        isOverdue: diff < 0,
-        daysText: diff < 0 ? `${Math.abs(diff)}d overdue` : `${diff}d left`,
-        scheduledDate: job.scheduledCleanDate || undefined,
-      });
-    }
-    return items.sort((a, b) => new Date(a.warrantyEndDate).getTime() - new Date(b.warrantyEndDate).getTime());
-  }, [jobs, now, ninetyDaysFromNow, tr19Reports]);
+  const scheduledJobsQuickView = useMemo(() => {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const windowEnd = new Date(today);
+    windowEnd.setDate(windowEnd.getDate() + 28);
+
+    return jobs
+      .map((job) => {
+        const scheduledDate = normalizeJobDateStr(job.startDate) || normalizeJobDateStr(job.scheduledCleanDate);
+        if (!scheduledDate) return null;
+        const scheduledAt = new Date(scheduledDate + 'T12:00:00');
+        if (Number.isNaN(scheduledAt.getTime())) return null;
+        if (scheduledAt < today || scheduledAt > windowEnd) return null;
+        return {
+          ...job,
+          scheduledDate,
+          siteName: job.title || 'Unnamed Site',
+          customerName: job.customerName || 'No Name',
+        };
+      })
+      .filter((item): item is Job & { scheduledDate: string; siteName: string; customerName: string } => !!item)
+      .sort((a, b) => new Date(a.scheduledDate + 'T12:00:00').getTime() - new Date(b.scheduledDate + 'T12:00:00').getTime());
+  }, [jobs, now]);
 
   const jobsDueToSchedule = useMemo(() => {
     return jobs
@@ -1032,12 +1034,12 @@ const AdminDashboardHome: React.FC = () => {
         </div>
       </div>
 
-      {/* Two columns: Renewal Dashboard | Recent Certificates */}
+      {/* Two columns: Quick View Dashboard | Recent Certificates */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Renewal Dashboard */}
+        {/* Quick View Dashboard */}
         <div className="bg-[#111111] rounded-2xl border border-[#333333] overflow-hidden">
           <div className="p-4 border-b border-[#333333] flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white">Renewal Dashboard</h2>
+            <h2 className="text-lg font-bold text-white">Quick View Dashboard</h2>
             <Link
               to="/dashboard/sites"
               className="text-xs font-bold text-[#F2C200] hover:underline uppercase tracking-wider"
@@ -1046,48 +1048,34 @@ const AdminDashboardHome: React.FC = () => {
             </Link>
           </div>
           <div className="divide-y divide-[#333333] max-h-[400px] overflow-y-auto">
-            {renewalItems.slice(0, 6).map((item) => (
-              <Link
+            {scheduledJobsQuickView.map((item) => (
+              <div
                 key={item.id}
-                to={`/dashboard/sites?siteId=${encodeURIComponent(item.customerId || item.id)}`}
-                className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors group"
+                className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors group gap-3"
               >
-                <div className="flex items-center gap-4 min-w-0">
-                  <div
-                    className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                      item.isOverdue ? 'bg-red-500' : 'bg-amber-500'
-                    }`}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-white group-hover:text-[#F2C200] transition-colors truncate">
-                      {item.customerName || 'No Name'}
-                    </p>
-                    <p className="text-[10px] text-gray-500 font-bold">{getPostcode(item) || item.id}</p>
-                  </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-white truncate">{item.siteName}</p>
+                  <p className="text-[10px] text-gray-400 font-bold truncate">{item.customerName}</p>
+                  <p className="text-[10px] text-[#F2C200] font-bold uppercase">
+                    {new Date(item.scheduledDate + 'T12:00:00').toLocaleDateString('en-GB', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                  </p>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  {item.scheduledDate && (
-                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-blue-900/30 text-blue-300 border border-blue-800/40">
-                      Scheduled:{' '}
-                      {new Date(item.scheduledDate + 'T12:00:00').toLocaleDateString('en-GB', {
-                        day: 'numeric',
-                        month: 'short',
-                      })}
-                    </span>
-                  )}
-                  <span
-                    className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
-                      item.isOverdue ? 'bg-red-900/30 text-red-400' : 'bg-amber-900/30 text-amber-400'
-                    }`}
-                  >
-                    {item.daysText}
-                  </span>
-                  <i className="fas fa-chevron-right text-[10px] text-gray-600 group-hover:text-[#F2C200] transition-colors" />
-                </div>
-              </Link>
+                <Link
+                  to={`/dashboard/sites?siteId=${encodeURIComponent(item.customerId || item.id)}`}
+                  className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase bg-[#F2C200]/15 text-[#F2C200] border border-[#F2C200]/40 hover:bg-[#F2C200]/25 transition-colors shrink-0"
+                >
+                  View Job
+                </Link>
+              </div>
             ))}
-            {renewalItems.length === 0 && (
-              <div className="p-12 text-center text-gray-500 text-sm font-bold">No sites due for renewal.</div>
+            {scheduledJobsQuickView.length === 0 && (
+              <div className="p-12 text-center text-gray-500 text-sm font-bold">
+                No scheduled jobs in the next 28 days.
+              </div>
             )}
           </div>
         </div>
