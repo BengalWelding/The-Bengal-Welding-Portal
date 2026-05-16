@@ -45,36 +45,41 @@ function JobRoute({ user }: { user: User }) {
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
 
-  // Supabase auth state + Format B invite fallback (hash has tokens but no /set-password path)
+  // Single auth listener — avoid parallel getSession + onAuthStateChange (causes lock steal errors).
   useEffect(() => {
-    const initAuth = async () => {
+    let active = true;
+
+    const applyInviteTokensFromHash = async () => {
       const hash = window.location.hash;
-      if (hash.includes('access_token=') && hash.includes('type=invite')) {
-        const afterHash = hash.slice(1);
-        const fragment = afterHash.includes('#') ? afterHash.split('#').pop()! : afterHash;
-        const params = new URLSearchParams(fragment);
-        const accessToken = params.get('access_token');
-        const refreshToken = params.get('refresh_token');
-        if (accessToken && refreshToken) {
-          const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-          if (!error) {
-            const base = `${window.location.origin}${window.location.pathname || '/'}`;
-            window.history.replaceState(null, '', `${base}#/set-password`);
-          }
-        }
+      if (!hash.includes('access_token=') || !hash.includes('type=invite')) return;
+      const afterHash = hash.slice(1);
+      const fragment = afterHash.includes('#') ? afterHash.split('#').pop()! : afterHash;
+      const params = new URLSearchParams(fragment);
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+      if (!accessToken || !refreshToken) return;
+      const { error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      if (!error) {
+        const base = `${window.location.origin}${window.location.pathname || '/'}`;
+        window.history.replaceState(null, '', `${base}#/set-password`);
       }
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = await mapSessionToUserWithProfile(session?.user ?? null);
-      setUser(user);
     };
 
-    initAuth();
+    void applyInviteTokensFromHash();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const user = await mapSessionToUserWithProfile(session?.user ?? null);
-      setUser(user);
+      if (!active) return;
+      const mapped = await mapSessionToUserWithProfile(session?.user ?? null);
+      if (active) setUser(mapped);
     });
-    return () => subscription.unsubscribe();
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleLogin = (loggedInUser: User) => {

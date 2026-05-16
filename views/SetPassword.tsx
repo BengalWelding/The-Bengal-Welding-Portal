@@ -37,34 +37,33 @@ const SetPassword: React.FC = () => {
         const type = params.get('type');
 
         if (type === 'invite') {
-          // Do not call setSession here — App.tsx does it. Wait for session via listener or getSession.
+          // App.tsx calls setSession for invite tokens — wait on auth listener only (no extra getSession).
           const applyReady = () => {
+            if (timeoutId != null) clearTimeout(timeoutId);
             setReady(true);
             const base = `${window.location.origin}${window.location.pathname || '/'}`;
             window.history.replaceState(null, '', `${base}#/set-password`);
           };
-          supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session) applyReady();
-          });
           const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             if (session) applyReady();
           });
           unsub = () => subscription.unsubscribe();
           timeoutId = setTimeout(() => {
-            supabase.auth.getSession().then(({ data: { session } }) => {
-              if (session) applyReady();
-              else setError('Invalid or expired link. Please request a new invite.');
-            });
-          }, 5000);
+            setError('Invalid or expired link. Please request a new invite.');
+          }, 8000);
           return;
         }
 
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          setReady(true);
-        } else {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+          if (session) {
+            if (timeoutId != null) clearTimeout(timeoutId);
+            setReady(true);
+          }
+        });
+        unsub = () => subscription.unsubscribe();
+        timeoutId = setTimeout(() => {
           setError('Invalid or expired link. Please request a new invite.');
-        }
+        }, 5000);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Something went wrong.');
       }
