@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase';
 import { deleteUser } from '../lib/auth';
 import SiteUpsertModal from '../components/SiteUpsertModal';
 import PhoneCallButton from '../components/PhoneCallButton';
+import MapsButton from '../components/MapsButton';
 
 const MAX_MEDIA_FILES = 10;
 const MAX_FILE_MB = 10;
@@ -65,6 +66,8 @@ const AdminSites: React.FC = () => {
     'TR19 Grease Clean (Kitchen Extract)',
     'Kitchen Installations',
     'Service Work',
+    'Delivery',
+    'Site Visit',
     'Collections',
   ];
 
@@ -155,9 +158,14 @@ const AdminSites: React.FC = () => {
 
   const installationSiteIdSet = useMemo(() => new Set<string>(sites.map((s) => s.id)), [sites]);
 
+  // A completed or cancelled job is no longer outstanding, so it must not mark its site overdue/due-soon.
+  // This matches the dashboard's calculation so both pages report the same counts.
+  const isOpenJob = (j: Job) => j.status !== 'COMPLETED' && j.status !== 'CANCELLED';
+
   const overdueJobsForFilter = useMemo(
     () =>
       jobs.filter((j) => {
+        if (!isOpenJob(j)) return false;
         if (!j.warrantyEndDate) return false;
         const due = new Date(j.warrantyEndDate + (j.warrantyEndDate.length === 10 ? 'T12:00:00' : ''));
         if (Number.isNaN(due.getTime())) return false;
@@ -169,6 +177,7 @@ const AdminSites: React.FC = () => {
   const dueSoonJobsForFilter = useMemo(
     () =>
       jobs.filter((j) => {
+        if (!isOpenJob(j)) return false;
         if (!j.warrantyEndDate) return false;
         const due = new Date(j.warrantyEndDate + (j.warrantyEndDate.length === 10 ? 'T12:00:00' : ''));
         if (Number.isNaN(due.getTime())) return false;
@@ -619,6 +628,7 @@ const AdminSites: React.FC = () => {
                       <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                         <p className="text-[10px] text-gray-500">{s.contact_phone}</p>
                         {s.contact_phone?.trim() ? <PhoneCallButton phone={s.contact_phone} size="sm" /> : null}
+                        {s.address?.trim() ? <MapsButton address={s.address} postcode={s.postcode} size="sm" /> : null}
                       </div>
                       {s.contact_email && (
                         <p className="text-[10px] text-gray-500">{s.contact_email}</p>

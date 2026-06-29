@@ -6,6 +6,7 @@ import { listServiceRequestsForAdmin } from '../lib/serviceRequests';
 import { listInstallationSites, type InstallationSite } from '../lib/installationSites';
 import SiteUpsertModal from '../components/SiteUpsertModal';
 import PhoneCallButton from '../components/PhoneCallButton';
+import MapsButton from '../components/MapsButton';
 
 const TR19_REPORTS_STORAGE_KEY = 'bengal_tr19_reports';
 const SITE_STATUS_OVERRIDES_KEY = 'bengal_site_status_overrides';
@@ -178,6 +179,8 @@ const AdminDashboardHome: React.FC = () => {
     'TR19 Grease Clean (Kitchen Extract)',
     'Kitchen Installations',
     'Service Work',
+    'Delivery',
+    'Site Visit',
     'Collections',
   ];
 
@@ -257,10 +260,23 @@ const AdminDashboardHome: React.FC = () => {
   const ninetyDaysFromNow = new Date();
   ninetyDaysFromNow.setDate(now.getDate() + 90);
 
-  const overdueJobs = jobs.filter((j) => new Date(j.warrantyEndDate) < now && new Date(j.warrantyEndDate) > new Date(0));
+  // Completed/cancelled jobs are no longer outstanding, so they must drop off the overdue/due-soon counts.
+  // Date parsing mirrors the Sites page (local noon for date-only strings) so both pages report identical counts.
+  const isOpenJob = (j: Job) => j.status !== 'COMPLETED' && j.status !== 'CANCELLED';
+  const parseJobDue = (j: Job): Date | null => {
+    if (!j.warrantyEndDate) return null;
+    const d = new Date(j.warrantyEndDate + (j.warrantyEndDate.length === 10 ? 'T12:00:00' : ''));
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  const overdueJobs = jobs.filter((j) => {
+    if (!isOpenJob(j)) return false;
+    const due = parseJobDue(j);
+    return !!due && due < now && due > new Date(0);
+  });
   const dueSoonJobs = jobs.filter((j) => {
-    const expiry = new Date(j.warrantyEndDate);
-    return expiry > now && expiry <= ninetyDaysFromNow;
+    if (!isOpenJob(j)) return false;
+    const due = parseJobDue(j);
+    return !!due && due > now && due <= ninetyDaysFromNow;
   });
   const getPostcode = (job: Job) =>
     job.customerPostcode || (job.customerAddress ? job.customerAddress.split(',').pop()?.trim() || '' : '');
@@ -298,6 +314,16 @@ const AdminDashboardHome: React.FC = () => {
 
     // Kitchen Installations always green.
     if (type === 'Kitchen Installations') return `${base} border-l-4 border-l-green-500 hover:border-green-400`;
+
+    // Delivery: purple gradient accent.
+    if (type === 'Delivery') {
+      return 'border border-[#333333] rounded-lg bg-gradient-to-r from-purple-600/30 to-[#111111] border-l-4 border-l-purple-500 hover:border-purple-400 transition-colors';
+    }
+
+    // Site Visit: teal gradient accent.
+    if (type === 'Site Visit') {
+      return 'border border-[#333333] rounded-lg bg-gradient-to-r from-teal-500/30 to-[#111111] border-l-4 border-l-teal-400 hover:border-teal-300 transition-colors';
+    }
 
     // Service Work and all other existing/legacy types stay amber.
     return `${base} border-l-4 border-l-amber-500 hover:border-amber-400`;
@@ -1191,8 +1217,9 @@ const AdminDashboardHome: React.FC = () => {
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-400 mb-1">Address</label>
-                <div className="w-full px-4 py-2.5 bg-black border border-[#333333] rounded-xl text-white text-sm">
-                  {allDetailsJob.customerAddress || '—'}
+                <div className="w-full px-4 py-2.5 bg-black border border-[#333333] rounded-xl text-white text-sm flex items-center justify-between gap-2">
+                  <span>{allDetailsJob.customerAddress || '—'}</span>
+                  <MapsButton address={allDetailsJob.customerAddress} postcode={allDetailsJob.customerPostcode} size="sm" />
                 </div>
               </div>
               <div>

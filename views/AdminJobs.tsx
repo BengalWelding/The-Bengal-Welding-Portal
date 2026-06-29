@@ -4,6 +4,7 @@ import { useAdmin } from '../contexts/AdminContext';
 import { Job } from '../types';
 import { getSiteName, getJobIdentifierAndService, getSiteAddress } from '../utils/jobIdentity';
 import PhoneCallButton from '../components/PhoneCallButton';
+import MapsButton from '../components/MapsButton';
 
 const SURVEYS_STORAGE_KEY = 'bengal_surveys';
 const TR19_REPORTS_STORAGE_KEY = 'bengal_tr19_reports';
@@ -319,6 +320,7 @@ const AdminJobs: React.FC = () => {
                       <div className="flex items-center gap-1.5 mt-1">
                         <span className="text-[10px] text-gray-400">{job.customerPhone}</span>
                         <PhoneCallButton phone={job.customerPhone} size="sm" />
+                        <MapsButton address={job.customerAddress} postcode={job.customerPostcode} size="sm" />
                       </div>
                     ) : null}
                   </td>

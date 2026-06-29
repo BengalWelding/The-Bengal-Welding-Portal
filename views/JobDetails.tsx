@@ -11,6 +11,7 @@ import { COLORS } from '../constants';
 import { createWarrantyClaim } from '../lib/warrantyClaims';
 import { updateJob, getJobById } from '../lib/jobs';
 import PhoneCallButton from '../components/PhoneCallButton';
+import MapsButton from '../components/MapsButton';
 
 interface JobDetailsProps {
   role: UserRole;
@@ -660,6 +661,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ role }) => {
                         <span className="text-white font-medium inline-flex items-center gap-2 flex-wrap">
                           {job.customerPhone}
                           <PhoneCallButton phone={job.customerPhone} size="sm" />
+                          <MapsButton address={job.customerAddress} postcode={job.customerPostcode} size="sm" />
                         </span>
                       </p>
                     </div>
